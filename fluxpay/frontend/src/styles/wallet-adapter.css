@@ -1,0 +1,90 @@
+/* Wallet adapter custom styles — glassmorphism theme */
+.wallet-adapter-button {
+  background: linear-gradient(135deg, #7c3aed, #0d9488) !important;
+  border-radius: 0.75rem !important;
+  padding: 1rem 1.5rem !important;
+  height: auto !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+  border: none !important;
+  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.25) !important;
+}
+
+.wallet-adapter-button:hover {
+  transform: translateY(-1px) scale(1.03) !important;
+  box-shadow: 0 8px 25px rgba(124, 58, 237, 0.35), 0 0 40px rgba(20, 184, 166, 0.15) !important;
+  background: linear-gradient(135deg, #6d28d9, #0f766e) !important;
+}
+
+.wallet-adapter-button:active {
+  transform: scale(0.98) !important;
+}
+
+/* Modal overlay */
+.wallet-adapter-modal-overlay {
+  background: rgba(2, 6, 23, 0.8) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Modal wrapper — glassmorphism */
+.wallet-adapter-modal-wrapper {
+  background: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(24px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+  border-radius: 1.5rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset !important;
+}
+
+.wallet-adapter-modal-title {
+  color: white !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+}
+
+.wallet-adapter-modal-list {
+  margin: 1rem 0 !important;
+}
+
+.wallet-adapter-modal-list li {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 0.75rem !important;
+  margin-bottom: 0.5rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.wallet-adapter-modal-list li:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(139, 92, 246, 0.3) !important;
+  transform: translateX(4px) !important;
+  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.1) !important;
+}
+
+/* Button text inside modal */
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0.75rem 1rem !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Close button */
+.wallet-adapter-modal-button-close {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  transition: all 0.2s ease !important;
+}
+
+.wallet-adapter-modal-button-close:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+}

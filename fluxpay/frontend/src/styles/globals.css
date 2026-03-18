@@ -1,0 +1,367 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: 'Fira Code', 'Courier New', monospace;
+}
+
+/* ======================================
+   ANIMATED AUTH BACKGROUND
+   ====================================== */
+
+/* Root container — covers entire viewport */
+.auth-bg-root {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #020617;
+}
+
+/* Animated gradient base layer */
+.auth-bg-gradient {
+  position: absolute;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    135deg,
+    #020617 0%,
+    #0c0a2a 15%,
+    #0f172a 30%,
+    #0a1628 50%,
+    #120b30 70%,
+    #071520 85%,
+    #020617 100%
+  );
+  animation: authGradientShift 15s ease-in-out infinite alternate;
+}
+
+@keyframes authGradientShift {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  33% {
+    transform: translate(-5%, -3%) rotate(1deg);
+  }
+  66% {
+    transform: translate(3%, 5%) rotate(-1deg);
+  }
+  100% {
+    transform: translate(-2%, 2%) rotate(0.5deg);
+  }
+}
+
+/* Mesh gradient blobs */
+.auth-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.35;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.auth-blob-1 {
+  width: 500px;
+  height: 500px;
+  top: -10%;
+  left: -5%;
+  background: radial-gradient(circle, #7c3aed 0%, #6d28d9 40%, transparent 70%);
+}
+
+.auth-blob-2 {
+  width: 450px;
+  height: 450px;
+  top: 50%;
+  right: -10%;
+  background: radial-gradient(circle, #0d9488 0%, #0f766e 40%, transparent 70%);
+}
+
+.auth-blob-3 {
+  width: 350px;
+  height: 350px;
+  bottom: -5%;
+  left: 20%;
+  background: radial-gradient(circle, #3b82f6 0%, #2563eb 40%, transparent 70%);
+}
+
+.auth-blob-4 {
+  width: 300px;
+  height: 300px;
+  top: 30%;
+  left: 40%;
+  background: radial-gradient(circle, #a855f7 0%, #7e22ce 40%, transparent 70%);
+  opacity: 0.2;
+}
+
+/* Floating particles */
+.auth-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.9), rgba(20, 184, 166, 0.6));
+  box-shadow: 0 0 6px 1px rgba(168, 85, 247, 0.4);
+  pointer-events: none;
+}
+
+/* Subtle grid overlay */
+.auth-grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+}
+
+/* Top glow accent line */
+.auth-glow-line {
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(139, 92, 246, 0.5),
+    rgba(20, 184, 166, 0.5),
+    transparent
+  );
+  box-shadow: 0 0 30px 10px rgba(139, 92, 246, 0.1);
+  pointer-events: none;
+}
+
+/* ======================================
+   GLASSMORPHISM CARD
+   ====================================== */
+
+.glass-card {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.5rem;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+.glass-card-inner {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.75rem;
+}
+
+/* Glass input fields */
+.glass-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.glass-input::placeholder {
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.glass-input:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1), 0 0 20px rgba(139, 92, 246, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Glass info boxes */
+.glass-info {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.glass-info-blue {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.15);
+}
+
+.glass-info-green {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.15);
+}
+
+.glass-info-purple {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.15);
+}
+
+.glass-info-red {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.15);
+}
+
+.glass-info-yellow {
+  background: rgba(234, 179, 8, 0.08);
+  border-color: rgba(234, 179, 8, 0.15);
+}
+
+/* Premium gradient buttons */
+.btn-gradient {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, #7c3aed, #0d9488);
+  border: none;
+  border-radius: 0.75rem;
+  color: white;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.btn-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #6d28d9, #0f766e);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(124, 58, 237, 0.35), 0 0 40px rgba(20, 184, 166, 0.15);
+}
+
+.btn-gradient:hover::before {
+  opacity: 1;
+}
+
+.btn-gradient:active {
+  transform: scale(0.98);
+}
+
+.btn-gradient span,
+.btn-gradient i {
+  position: relative;
+  z-index: 1;
+}
+
+.btn-gradient:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Ghost / outline buttons on glass */
+.btn-glass-outline {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.75rem;
+  color: #e2e8f0;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-glass-outline:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.btn-glass-outline:active {
+  transform: scale(0.98);
+}
+
+/* Step indicator on glass */
+.step-dot-active {
+  background: linear-gradient(135deg, #7c3aed, #0d9488);
+  color: white;
+  box-shadow: 0 0 15px rgba(124, 58, 237, 0.3);
+}
+
+.step-dot-inactive {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.step-line-active {
+  background: linear-gradient(90deg, #7c3aed, #0d9488);
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.2);
+}
+
+.step-line-inactive {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Divider on glass */
+.glass-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+}
+
+/* Subtle label text */
+.glass-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(203, 213, 225, 0.8);
+  margin-bottom: 0.5rem;
+}
+
+/* Responsive blob sizing */
+@media (max-width: 768px) {
+  .auth-blob-1 { width: 300px; height: 300px; }
+  .auth-blob-2 { width: 280px; height: 280px; }
+  .auth-blob-3 { width: 220px; height: 220px; }
+  .auth-blob-4 { width: 200px; height: 200px; }
+}
