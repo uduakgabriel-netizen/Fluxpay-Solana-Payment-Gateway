@@ -263,7 +263,7 @@ const Home: NextPage = () => {
       </section>
 
       {/* Developer Section */}
-      <section id="api" className="bg-gray-50 dark:bg-black py-16 sm:py-20 lg:py-24">
+      <section id="api" className="py-16 sm:py-20 lg:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-20">
           <motion.div 
             className="flex flex-col lg:flex-row items-start justify-between mb-8 sm:mb-12 gap-6"
@@ -344,7 +344,7 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="bg-white dark:bg-gray-900 py-16 sm:py-20 lg:py-24">
+      <section id="features" className="py-16 sm:py-20 lg:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-20">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {/* Feature 1 - Instant Settlement */}
@@ -437,7 +437,7 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="bg-gray-50 dark:bg-black py-16 sm:py-20 lg:py-24 relative overflow-hidden">
+      <section id="pricing" className="py-16 sm:py-20 lg:py-24 relative overflow-hidden">
         <div className="absolute inset-0 opacity-5 dark:opacity-10" style={{ 
           backgroundImage: 'linear-gradient(#0B0F19 1px, transparent 1px), linear-gradient(90deg, #0B0F19 1px, transparent 1px)', 
           backgroundSize: '50px 50px' 

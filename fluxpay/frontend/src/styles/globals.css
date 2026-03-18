@@ -365,3 +365,36 @@ code {
   .auth-blob-3 { width: 220px; height: 220px; }
   .auth-blob-4 { width: 200px; height: 200px; }
 }
+
+/* ======================================
+   ANIMATED SOLANA BORDER
+   ====================================== */
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.glass-card {
+  position: relative;
+  border: double 1px transparent;
+  background-image: 
+    linear-gradient(rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.55)),
+    conic-gradient(from var(--angle), #7c3aed, #0d9488, #3b82f6, #8b5cf6, #7c3aed);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  animation: rotateBorder 8s linear infinite;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes rotateBorder {
+  to { --angle: 360deg; }
+}
+
+/* Light mode adjustment */
+.light .glass-card {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)),
+    conic-gradient(from var(--angle), #7c3aed, #0d9488, #3b82f6, #8b5cf6, #7c3aed);
+}
