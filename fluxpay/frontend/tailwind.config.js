@@ -9,7 +9,14 @@ module.exports = {
     extend: {
       colors: {
         navy: '#0B0F19',
-      },
+      }
+      
+
+
+
+
+
+      
     },
   },
   plugins: [],

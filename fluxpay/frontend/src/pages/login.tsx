@@ -18,6 +18,7 @@ const Login: NextPage = () => {
 
   useEffect(() => {
     if (connected) {
+      localStorage.setItem('sessionToken', 'demo-session-token')
       router.push('/dashboard')
     }
   }, [connected, router])

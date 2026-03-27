@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Merchant {
+  id              String    @id @default(cuid())
+  walletAddress   String    @unique
+  email           String    @unique
+  emailVerified   Boolean   @default(false)
+  businessName    String
+  passwordHash    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions        Session[]
+  apiKeys         ApiKey[]
+
+  @@map("merchants")
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  merchantId   String
+  merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  token        String    @unique
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+
+  @@index([token])
+  @@index([merchantId])
+  @@map("sessions")
+}
+
+model ApiKey {
+  id           String    @id @default(cuid())
+  merchantId   String
+  merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  keyHash      String    @unique
+  name         String
+  permissions  Json      // { read: true, write: true, refund: true }
+  lastUsed     DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([keyHash])
+  @@index([merchantId])
+  @@map("api_keys")
+}
+
+model Nonce {
+  id            String    @id @default(cuid())
+  walletAddress String    @unique
+  nonce         String
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+
+  @@map("nonces")
+}
