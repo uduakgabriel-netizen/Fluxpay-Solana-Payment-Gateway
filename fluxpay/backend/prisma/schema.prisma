@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Auth Models ────────────────────────────────────────────
+
 model Merchant {
   id              String    @id @default(cuid())
   walletAddress   String    @unique
@@ -19,6 +21,14 @@ model Merchant {
 
   sessions        Session[]
   apiKeys         ApiKey[]
+  payments        Payment[]
+  refunds         Refund[]
+  settlements     Settlement[]
+  webhookConfigs  WebhookConfig[]
+  webhookLogs     WebhookLog[]
+  invoices        Invoice[]
+  subscriptions   Subscription[]
+  teamMembers     TeamMember[]
 
   @@map("merchants")
 }
@@ -37,18 +47,29 @@ model Session {
 }
 
 model ApiKey {
-  id           String    @id @default(cuid())
+  id           String      @id @default(cuid())
   merchantId   String
-  merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  keyHash      String    @unique
+  merchant     Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  keyHash      String      @unique
+  keyPrefix    String      // First 8 chars for identification (e.g., "sk_live_")
   name         String
-  permissions  Json      // { read: true, write: true, refund: true }
+  mode         ApiKeyMode  @default(LIVE)
+  permissions  Json        // { read: true, write: true, refund: true }
   lastUsed     DateTime?
-  createdAt    DateTime  @default(now())
+  lastIp       String?     // IP address of last request
+  requestCount Int         @default(0)
+  revoked      Boolean     @default(false)
+  revokedAt    DateTime?
+  createdAt    DateTime    @default(now())
 
   @@index([keyHash])
   @@index([merchantId])
   @@map("api_keys")
+}
+
+enum ApiKeyMode {
+  LIVE
+  TEST
 }
 
 model Nonce {
@@ -59,4 +80,349 @@ model Nonce {
   createdAt     DateTime  @default(now())
 
   @@map("nonces")
+}
+
+// ─── Webhook Models ─────────────────────────────────────────
+
+model WebhookConfig {
+  id           String    @id @default(cuid())
+  merchantId   String
+  merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // Configuration
+  url          String    // HTTPS webhook URL
+  secret       String    // Secret for generating X-FluxPay-Signature
+  events       Json      // Array of event names to subscribe to
+  active       Boolean   @default(true)
+
+  // Retry settings
+  maxRetries   Int       @default(5)
+  retryBackoff Int       @default(1000) // Base backoff in ms
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([merchantId])
+  @@map("webhook_configs")
+}
+
+model WebhookLog {
+  id           String           @id @default(cuid())
+  merchantId   String
+  merchant     Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // Delivery details
+  event        String           // e.g., "payment.completed"
+  url          String           // URL that was called
+  payload      Json             // Full payload sent
+  status       WebhookLogStatus @default(PENDING)
+
+  // Response
+  statusCode   Int?             // HTTP response status code
+  responseBody String?          // Response body (truncated)
+  duration     Int?             // Response time in ms
+
+  // Retry tracking
+  attempt      Int              @default(1)
+  maxAttempts  Int              @default(5)
+  nextRetryAt  DateTime?
+  error        String?          // Error message if failed
+
+  createdAt    DateTime         @default(now())
+
+  @@index([merchantId])
+  @@index([event])
+  @@index([status])
+  @@index([createdAt])
+  @@map("webhook_logs")
+}
+
+enum WebhookLogStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  RETRYING
+}
+
+// ─── Payment Models ─────────────────────────────────────────
+
+model Payment {
+  id               String        @id @default(cuid())
+  merchantId       String
+  merchant         Merchant      @relation(fields: [merchantId], references: [id])
+
+  // Payment details
+  amount           Float
+  token            String        // SOL, USDC, USDT, etc.
+  customerWallet   String?
+  customerEmail    String?
+  metadata         Json?         // Arbitrary merchant data (orderId, product, etc.)
+
+  // Status tracking
+  status           PaymentStatus @default(PENDING)
+
+  // Blockchain data
+  txHash           String?
+  receivingAddress String        // Unique wallet address for this payment
+  privateKey       String        // Encrypted private key for receiving address
+  confirmedAt      DateTime?     // When transaction was confirmed on chain
+
+  // Swap data
+  swapRequired     Boolean       @default(false)
+  swappedFrom      String?
+  swappedAmount    Float?
+  swapTxHash       String?
+  swapFee          Float?        // Fee paid to Jupiter for swap
+
+  // Settlement tracking
+  settled          Boolean       @default(false)
+  settledAt        DateTime?
+
+  // Refund tracking
+  refunded         Boolean       @default(false)
+  refundedAt       DateTime?
+
+  // Timestamps
+  createdAt        DateTime      @default(now())
+  completedAt      DateTime?
+  expiresAt        DateTime      // Payment link expires after 24h
+
+  // Relations
+  refunds          Refund[]
+  statusHistory    PaymentEvent[]
+
+  @@index([merchantId])
+  @@index([status])
+  @@index([receivingAddress])
+  @@index([createdAt])
+  @@index([settled])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  SWAPPED
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+model PaymentEvent {
+  id         String        @id @default(cuid())
+  paymentId  String
+  payment    Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  status     PaymentStatus
+  timestamp  DateTime      @default(now())
+
+  @@index([paymentId])
+  @@map("payment_events")
+}
+
+// ─── Refund Models ──────────────────────────────────────────
+
+model Refund {
+  id              String       @id @default(cuid())
+  merchantId      String
+  merchant        Merchant     @relation(fields: [merchantId], references: [id])
+  paymentId       String
+  payment         Payment      @relation(fields: [paymentId], references: [id])
+
+  // Refund details
+  amount          Float
+  reason          String?
+  note            String?
+
+  // Status tracking
+  status          RefundStatus @default(PENDING)
+
+  // Blockchain data
+  txHash          String?
+  processedAt     DateTime?
+
+  // Approval workflow
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectedReason  String?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([merchantId])
+  @@index([paymentId])
+  @@index([status])
+  @@map("refunds")
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+// ─── Settlement Models ──────────────────────────────────────
+
+model Settlement {
+  id             String           @id @default(cuid())
+  merchantId     String
+  merchant       Merchant         @relation(fields: [merchantId], references: [id])
+
+  // Settlement details
+  amount         Float
+  token          String
+  paymentIds     Json             // Array of payment IDs included
+  paymentCount   Int
+
+  // Fee
+  fee            Float            @default(0)
+
+  // Status tracking
+  status         SettlementStatus @default(PROCESSING)
+
+  // Blockchain data
+  txHash         String?
+  fromAddress    String?
+  toAddress      String?
+
+  // Timestamps
+  batchDate      DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  completedAt    DateTime?
+  failedAt       DateTime?
+  failureReason  String?
+
+  @@index([merchantId])
+  @@index([status])
+  @@index([batchDate])
+  @@map("settlements")
+}
+
+enum SettlementStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── Invoice Models ─────────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(cuid())
+  merchantId     String
+  merchant       Merchant      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // Invoice details
+  invoiceNumber  String        // e.g., INV-001
+  customer       String
+  customerEmail  String?
+  amount         Float
+  token          String        @default("USDC")
+  description    String?
+
+  // Status
+  status         InvoiceStatus @default(DRAFT)
+
+  // Dates
+  dueDate        DateTime
+  paidAt         DateTime?
+  sentAt         DateTime?
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([merchantId, invoiceNumber])
+  @@index([merchantId])
+  @@index([status])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// ─── Subscription Models ────────────────────────────────────
+
+model Subscription {
+  id              String             @id @default(cuid())
+  merchantId      String
+  merchant        Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // Customer info
+  customer        String
+  customerEmail   String
+
+  // Plan details
+  plan            String
+  amount          Float
+  token           String             @default("USDC")
+  interval        SubscriptionInterval @default(MONTHLY)
+
+  // Status
+  status          SubscriptionStatus @default(ACTIVE)
+
+  // Billing
+  nextBillingDate DateTime
+  lastBilledAt    DateTime?
+  cancelledAt     DateTime?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([merchantId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  PAST_DUE
+}
+
+enum SubscriptionInterval {
+  MONTHLY
+  YEARLY
+}
+
+// ─── Team Models ────────────────────────────────────────────
+
+model TeamMember {
+  id           String           @id @default(cuid())
+  merchantId   String
+  merchant     Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // Member info
+  name         String
+  email        String
+  role         TeamRole         @default(DEVELOPER)
+  status       TeamMemberStatus @default(PENDING)
+
+  // Timestamps
+  invitedAt    DateTime         @default(now())
+  acceptedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([merchantId, email])
+  @@index([merchantId])
+  @@map("team_members")
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  PENDING
+  REMOVED
 }

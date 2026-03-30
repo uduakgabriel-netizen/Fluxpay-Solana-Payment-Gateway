@@ -13,7 +13,7 @@ import {
   LifeBuoy,
   LogOut,
 } from 'lucide-react'
-import { mockMerchant, mockNotifications } from '@/lib/mock-data'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -39,6 +39,8 @@ const routeTitles: Record<string, string> = {
 export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
   const router = useRouter()
   const { isDark, toggleTheme } = useTheme()
+  const { merchant } = useAuth()
+  const notifications: any[] = []
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -66,7 +68,7 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
     router.push('/login')
   }
 
-  const unreadCount = mockNotifications.filter((n) => !n.read).length
+  const unreadCount = notifications.filter((n) => !n.read).length
 
   return (
     <header className="sticky top-0 z-30 h-[72px] bg-white/80 dark:bg-[#0B0F19]/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between px-4 md:px-6 lg:px-8">
@@ -121,7 +123,7 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
               </div>
               <div className="max-h-64 overflow-y-auto">
-                {mockNotifications.map((notif) => (
+                {notifications.map((notif) => (
                   <div
                     key={notif.id}
                     className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer border-b border-gray-100 dark:border-white/[0.03] ${
@@ -149,10 +151,10 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
             className="flex items-center gap-2 p-1.5 pr-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8B5CF6] to-[#14B8A6] flex items-center justify-center text-white text-xs font-bold shadow-md">
-              {mockMerchant.name.charAt(0)}
+              {merchant?.businessName?.charAt(0) || 'M'}
             </div>
             <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
-              {mockMerchant.name}
+              {merchant?.businessName || 'Merchant'}
             </span>
             <ChevronDown size={14} className="hidden md:block text-gray-400 dark:text-gray-500" />
           </button>
@@ -160,8 +162,8 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
           {userMenuOpen && (
             <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl shadow-black/10 dark:shadow-black/40 overflow-hidden">
               <div className="p-4 border-b border-gray-200 dark:border-white/[0.06]">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{mockMerchant.name}</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{mockMerchant.email}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{merchant?.businessName || 'Merchant'}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{merchant?.email || ''}</p>
               </div>
               <div className="py-1">
                 {[

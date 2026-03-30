@@ -1,20 +1,64 @@
+import { useState, useEffect, useCallback } from 'react'
 import DashboardLayout from '@/components/dashboard/layout'
-import { ArrowLeftRight, Check, X, Search } from 'lucide-react'
-
-const mockRefunds = [
-  { id: 'ref_001', paymentId: 'pay_1a2b3c4d', amount: '$50.00', token: 'USDC', reason: 'Customer request', status: 'pending', date: 'Mar 26, 2026' },
-  { id: 'ref_002', paymentId: 'pay_5e6f7g8h', amount: '$200.00', token: 'SOL', reason: 'Duplicate payment', status: 'approved', date: 'Mar 25, 2026' },
-  { id: 'ref_003', paymentId: 'pay_3m4n5o6p', amount: '$1,000.00', token: 'USDC', reason: 'Service not provided', status: 'rejected', date: 'Mar 24, 2026' },
-  { id: 'ref_004', paymentId: 'pay_2u3v4w5x', amount: '$75.00', token: 'USDT', reason: 'Overcharged', status: 'pending', date: 'Mar 24, 2026' },
-]
+import { Search, Check, X } from 'lucide-react'
+import { listRefunds, approveRefund, rejectRefund, type Refund } from '@/services/api/refunds'
 
 const statusStyles: Record<string, string> = {
-  pending: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  approved: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  rejected: 'bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400',
+  PENDING: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  APPROVED: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  REJECTED: 'bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400',
+  PROCESSED: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
 }
 
 export default function RefundsPage() {
+  const [refunds, setRefunds] = useState<Refund[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+
+  const fetchRefunds = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await listRefunds({ page: 1, limit: 20 })
+      setRefunds(result.data)
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed to load refunds')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchRefunds()
+  }, [fetchRefunds])
+
+  const handleApprove = async (refundId: string) => {
+    setActionLoading(refundId)
+    try {
+      await approveRefund(refundId)
+      await fetchRefunds()
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to approve refund')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleReject = async (refundId: string) => {
+    setActionLoading(refundId)
+    try {
+      await rejectRefund(refundId)
+      await fetchRefunds()
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to reject refund')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const formatAmount = (amount: number) => `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+
   return (
     <DashboardLayout pageTitle="Refunds">
       <div className="space-y-6">
@@ -31,47 +75,71 @@ export default function RefundsPage() {
         </div>
 
         <div className="bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-white/[0.06] rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-white/[0.04]">
-                  <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Refund ID</th>
-                  <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Payment ID</th>
-                  <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Amount</th>
-                  <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Reason</th>
-                  <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Status</th>
-                  <th className="text-right px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mockRefunds.map((r) => (
-                  <tr key={r.id} className="border-b border-gray-50 dark:border-white/[0.02] hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-colors">
-                    <td className="px-6 py-4 text-sm font-mono font-medium text-[#8B5CF6]">{r.id}</td>
-                    <td className="px-6 py-4 text-sm font-mono text-gray-500 dark:text-gray-400">{r.paymentId}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-white">{r.amount} <span className="text-gray-400 text-xs">{r.token}</span></td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{r.reason}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold ${statusStyles[r.status]}`}>
-                        {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {r.status === 'pending' && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                            <Check size={14} />
-                          </button>
-                          <button className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors cursor-pointer">
-                            <X size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
+          {loading ? (
+            <div className="p-12 text-center">
+              <p className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">Loading refunds...</p>
+            </div>
+          ) : error ? (
+            <div className="p-12 text-center">
+              <p className="text-sm text-red-500">{error}</p>
+              <button onClick={fetchRefunds} className="mt-2 text-sm text-[#8B5CF6] hover:underline cursor-pointer">Retry</button>
+            </div>
+          ) : refunds.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">No refunds yet</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Refund requests will appear here</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-white/[0.04]">
+                    <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Refund ID</th>
+                    <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Payment ID</th>
+                    <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Amount</th>
+                    <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Reason</th>
+                    <th className="text-left px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Status</th>
+                    <th className="text-right px-6 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {refunds.map((r) => (
+                    <tr key={r.id} className="border-b border-gray-50 dark:border-white/[0.02] hover:bg-gray-50/50 dark:hover:bg-white/[0.01] transition-colors">
+                      <td className="px-6 py-4 text-sm font-mono font-medium text-[#8B5CF6]">{r.id.slice(0, 12)}...</td>
+                      <td className="px-6 py-4 text-sm font-mono text-gray-500 dark:text-gray-400">{r.paymentId.slice(0, 12)}...</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-white">{formatAmount(r.amount)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{r.reason}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold ${statusStyles[r.status] || statusStyles['PENDING']}`}>
+                          {r.status.charAt(0) + r.status.slice(1).toLowerCase()}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {r.status === 'PENDING' && (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleApprove(r.id)}
+                              disabled={actionLoading === r.id}
+                              className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <Check size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleReject(r.id)}
+                              disabled={actionLoading === r.id}
+                              className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>

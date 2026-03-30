@@ -1,11 +1,12 @@
 import type { NextPage } from 'next'
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useWallet } from '@solana/wallet-adapter-react'
 import dynamic from 'next/dynamic'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
+import { useAuth } from '@/contexts/AuthContext'
 
 const WalletMultiButton = dynamic(
   async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton,
@@ -14,14 +15,62 @@ const WalletMultiButton = dynamic(
 
 const Login: NextPage = () => {
   const { connected } = useWallet()
+  const { isAuthenticated, loginWithWallet, loginWithEmail, loading: authLoading } = useAuth()
   const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showEmailLogin, setShowEmailLogin] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
+  // Redirect if already authenticated
   useEffect(() => {
-    if (connected) {
-      localStorage.setItem('sessionToken', 'demo-session-token')
+    if (isAuthenticated && !authLoading) {
       router.push('/dashboard')
     }
-  }, [connected, router])
+  }, [isAuthenticated, authLoading, router])
+
+  // When wallet connects, attempt wallet login
+  useEffect(() => {
+    if (connected && !isAuthenticated && !loading && !authLoading) {
+      handleWalletLogin()
+    }
+  }, [connected])
+
+  const handleWalletLogin = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await loginWithWallet()
+      router.push('/dashboard')
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Login failed. Please try again.'
+      // If merchant doesn't exist, suggest signup
+      if (message.includes('No nonce found') || err?.response?.status === 400) {
+        setError('Please sign the message in your wallet to authenticate.')
+      } else {
+        setError(message)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email || !password) return
+    setLoading(true)
+    setError(null)
+    try {
+      await loginWithEmail(email, password)
+      router.push('/dashboard')
+    } catch (err: any) {
+      const message = err?.response?.data?.error || 'Invalid email or password.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-[#0B0F19] transition-colors font-sans">
@@ -44,11 +93,30 @@ const Login: NextPage = () => {
               <p className="text-[14px] text-gray-500 dark:text-slate-400">Sign in to your FluxPay account</p>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div className="mb-5 bg-transparent border border-[#F75A68]/30 rounded-xl p-4">
+                <p className="text-[14px] text-[#F75A68] flex items-center">
+                  <i className="ri-alert-circle-line mr-2"></i>
+                  {error}
+                </p>
+              </div>
+            )}
+
             <div className="space-y-5">
               {/* Wallet Button Container */}
               <div className="flex justify-center flex-col [&_.wallet-adapter-button]:w-full [&_.wallet-adapter-button]:bg-gradient-to-r [&_.wallet-adapter-button]:from-[#8B5CF6] [&_.wallet-adapter-button]:to-[#14B8A6] [&_.wallet-adapter-button]:text-white [&_.wallet-adapter-button]:font-semibold [&_.wallet-adapter-button]:px-6 [&_.wallet-adapter-button]:py-3 [&_.wallet-adapter-button]:rounded-xl [&_.wallet-adapter-button]:flex [&_.wallet-adapter-button]:items-center [&_.wallet-adapter-button]:justify-center [&_.wallet-adapter-button:hover]:opacity-90 [&_.wallet-adapter-button]:transition-opacity [&_.wallet-adapter-button]:h-auto">
                 <WalletMultiButton />
               </div>
+
+              {loading && (
+                <div className="text-center">
+                  <p className="text-[14px] text-gray-500 dark:text-slate-400 animate-pulse">
+                    <i className="ri-loader-4-line animate-spin mr-2"></i>
+                    Authenticating...
+                  </p>
+                </div>
+              )}
 
               {/* Divider */}
               <div className="relative py-2">
@@ -62,17 +130,42 @@ const Login: NextPage = () => {
                 </div>
               </div>
 
-              {/* Social Auth Buttons */}
-              <div className="space-y-3">
-                <button className="w-full bg-transparent border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white px-6 py-3 rounded-xl hover:border-[#14B8A6] flex items-center justify-center gap-2 transition-colors text-[14px]">
-                  <i className="ri-github-line text-lg"></i>
-                  Continue with GitHub
+              {/* Email Login */}
+              {!showEmailLogin ? (
+                <button
+                  onClick={() => setShowEmailLogin(true)}
+                  className="w-full bg-transparent border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white px-6 py-3 rounded-xl hover:border-[#14B8A6] flex items-center justify-center gap-2 transition-colors text-[14px] cursor-pointer"
+                >
+                  <i className="ri-mail-line text-lg"></i>
+                  Continue with Email
                 </button>
-                <button className="w-full bg-transparent border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white px-6 py-3 rounded-xl hover:border-[#14B8A6] flex items-center justify-center gap-2 transition-colors text-[14px]">
-                  <i className="ri-discord-line text-lg text-indigo-400"></i>
-                  Continue with Discord
-                </button>
-              </div>
+              ) : (
+                <form onSubmit={handleEmailLogin} className="space-y-3">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email address"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
+                    required
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold px-6 py-3 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {loading ? 'Signing in...' : 'Sign In'}
+                  </button>
+                </form>
+              )}
 
               {/* Sign Up Link */}
               <div className="text-center pt-2">

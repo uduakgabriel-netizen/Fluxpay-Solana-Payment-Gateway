@@ -13,3 +13,15 @@ build/
 *~
 .cache/
 .turbo
+.backend.node_modules/
+.backend.next/
+.backend.env/
+.backend.idea/
+.backend.build/
+.backend.log/
+.backend.local
+.backend.swo
+.backend.swp
+.backend.cache/
+.backend.turbo
+.backend.*log

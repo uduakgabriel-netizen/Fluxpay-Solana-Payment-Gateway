@@ -1,11 +1,13 @@
 import type { NextPage } from 'next'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useWallet } from '@solana/wallet-adapter-react'
 import dynamic from 'next/dynamic'
 import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { usePasskey } from '@/contexts/PasskeyContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 const WalletMultiButton = dynamic(
   async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton,
@@ -15,9 +17,44 @@ const WalletMultiButton = dynamic(
 const SignUp: NextPage = () => {
   const { connected, publicKey } = useWallet()
   const { registerPasskey, isPasskeySupported } = usePasskey()
-  const [step, setStep] = useState<'wallet' | 'passkey' | 'complete'>('wallet')
+  const { isAuthenticated, signupWithWallet, loading: authLoading } = useAuth()
+  const router = useRouter()
+  const [step, setStep] = useState<'wallet' | 'details' | 'passkey' | 'complete'>('wallet')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [businessName, setBusinessName] = useState('')
+  const [password, setPassword] = useState('')
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      router.push('/dashboard')
+    }
+  }, [isAuthenticated, authLoading, router])
+
+  // When wallet connects, move to details step
+  useEffect(() => {
+    if (connected && publicKey && step === 'wallet') {
+      setStep('details')
+    }
+  }, [connected, publicKey, step])
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!publicKey || !email || !businessName) return
+    setLoading(true)
+    setError(null)
+    try {
+      await signupWithWallet(email, businessName, password || undefined)
+      setStep('passkey')
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Signup failed. Please try again.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleRegisterPasskey = async () => {
     if (!publicKey) return
@@ -61,11 +98,13 @@ const SignUp: NextPage = () => {
             <div className="text-center mb-8">
               <h1 className="text-[24px] font-bold text-gray-900 dark:text-white mb-2">
                 {step === 'wallet' && 'Connect Your Wallet'}
+                {step === 'details' && 'Business Details'}
                 {step === 'passkey' && 'Set Up Passkey'}
                 {step === 'complete' && 'Account Created'}
               </h1>
               <p className="text-[14px] text-gray-500 dark:text-slate-400">
                 {step === 'wallet' && 'Connect your Solana wallet to get started'}
+                {step === 'details' && 'Tell us about your business'}
                 {step === 'passkey' && 'Secure your account with a passkey'}
                 {step === 'complete' && 'Welcome to FluxPay'}
               </p>
@@ -74,11 +113,23 @@ const SignUp: NextPage = () => {
             {/* Step Indicator */}
             <div className="flex items-center justify-center gap-3 mb-8">
               <div className={`flex items-center justify-center w-10 h-10 rounded-full text-sm ${
-                step === 'wallet' || step === 'passkey' || step === 'complete'
+                step === 'wallet' || step === 'details' || step === 'passkey' || step === 'complete'
                   ? 'bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white' 
                   : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-white/10'
               }`}>
                 <i className="ri-wallet-line"></i>
+              </div>
+              <div className={`flex-1 h-0.5 rounded-full ${
+                step === 'details' || step === 'passkey' || step === 'complete'
+                  ? 'bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6]' 
+                  : 'bg-gray-200 dark:bg-white/10'
+              }`}></div>
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full text-sm ${
+                step === 'details' || step === 'passkey' || step === 'complete'
+                  ? 'bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white' 
+                  : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-white/10'
+              }`}>
+                <i className="ri-briefcase-line"></i>
               </div>
               <div className={`flex-1 h-0.5 rounded-full ${
                 step === 'passkey' || step === 'complete'
@@ -94,6 +145,16 @@ const SignUp: NextPage = () => {
               </div>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div className="mb-5 bg-transparent border border-[#F75A68]/30 rounded-xl p-4">
+                <p className="text-[14px] text-[#F75A68] flex items-center">
+                  <i className="ri-alert-circle-line mr-2"></i>
+                  {error}
+                </p>
+              </div>
+            )}
+
             {/* Step 1: Connect Wallet */}
             {step === 'wallet' && (
               <div className="space-y-5">
@@ -107,32 +168,68 @@ const SignUp: NextPage = () => {
                 <div className="flex justify-center flex-col [&_.wallet-adapter-button]:w-full [&_.wallet-adapter-button]:bg-gradient-to-r [&_.wallet-adapter-button]:from-[#8B5CF6] [&_.wallet-adapter-button]:to-[#14B8A6] [&_.wallet-adapter-button]:text-white [&_.wallet-adapter-button]:font-semibold [&_.wallet-adapter-button]:px-6 [&_.wallet-adapter-button]:py-3 [&_.wallet-adapter-button]:rounded-xl [&_.wallet-adapter-button]:flex [&_.wallet-adapter-button]:items-center [&_.wallet-adapter-button]:justify-center [&_.wallet-adapter-button:hover]:opacity-90 [&_.wallet-adapter-button]:transition-opacity [&_.wallet-adapter-button]:h-auto">
                   <WalletMultiButton />
                 </div>
-
-                {connected && publicKey && (
-                  <div className="bg-transparent border border-[#00B37E]/30 rounded-xl p-4">
-                    <p className="text-[14px] font-semibold text-[#00B37E] mb-1 flex items-center">
-                      <i className="ri-check-circle-line mr-2"></i>
-                      Wallet Connected
-                    </p>
-                    <p className="text-[12px] text-[#00B37E]/80 font-mono break-all ml-6">
-                      {publicKey.toBase58().slice(0, 8)}...{publicKey.toBase58().slice(-8)}
-                    </p>
-                  </div>
-                )}
-
-                {connected && publicKey && (
-                  <button
-                    onClick={() => setStep('passkey')}
-                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold flex items-center justify-center px-6 py-3 rounded-xl hover:opacity-90 transition-opacity gap-2"
-                  >
-                    <span>Continue to Passkey Setup</span>
-                    <i className="ri-arrow-right-line"></i>
-                  </button>
-                )}
               </div>
             )}
 
-            {/* Step 2: Set Up Passkey */}
+            {/* Step 2: Business Details */}
+            {step === 'details' && connected && publicKey && (
+              <div className="space-y-5">
+                <div className="bg-transparent border border-[#00B37E]/30 rounded-xl p-4">
+                  <p className="text-[14px] font-semibold text-[#00B37E] mb-1 flex items-center">
+                    <i className="ri-check-circle-line mr-2"></i>
+                    Wallet Connected
+                  </p>
+                  <p className="text-[12px] text-[#00B37E]/80 font-mono break-all ml-6">
+                    {publicKey.toBase58().slice(0, 8)}...{publicKey.toBase58().slice(-8)}
+                  </p>
+                </div>
+
+                <form onSubmit={handleSignup} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Email Address</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@business.com"
+                      className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Business Name</label>
+                    <input
+                      type="text"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      placeholder="Your Business Name"
+                      className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Password <span className="text-gray-400 dark:text-gray-600 normal-case">(optional)</span></label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Set a password for email login"
+                      className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold flex items-center justify-center px-6 py-3 rounded-xl hover:opacity-90 transition-opacity gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <span>{loading ? 'Creating Account...' : 'Create Account'}</span>
+                    {!loading && <i className="ri-arrow-right-line"></i>}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Step 3: Set Up Passkey */}
             {step === 'passkey' && (
               <div className="space-y-5">
                 <div className="bg-transparent border border-gray-200 dark:border-white/10 rounded-xl p-4">
@@ -145,20 +242,11 @@ const SignUp: NextPage = () => {
                   </p>
                 </div>
 
-                {error && (
-                  <div className="bg-transparent border border-[#F75A68]/30 rounded-xl p-4">
-                    <p className="text-[14px] text-[#F75A68] flex items-center">
-                      <i className="ri-alert-circle-line mr-2"></i>
-                      {error}
-                    </p>
-                  </div>
-                )}
-
                 {isPasskeySupported() ? (
                   <button
                     onClick={handleRegisterPasskey}
                     disabled={loading}
-                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold flex items-center justify-center px-6 py-3 rounded-xl hover:opacity-90 transition-opacity gap-2"
+                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold flex items-center justify-center px-6 py-3 rounded-xl hover:opacity-90 transition-opacity gap-2 cursor-pointer disabled:opacity-50"
                   >
                     <span>{loading ? 'Setting Up...' : 'Register Passkey'}</span>
                     {!loading && <i className="ri-fingerprint-line"></i>}
@@ -174,14 +262,14 @@ const SignUp: NextPage = () => {
 
                 <button
                   onClick={skipPasskey}
-                  className="w-full bg-transparent border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white px-6 py-3 rounded-xl hover:border-[#14B8A6] flex items-center justify-center gap-2 transition-colors text-[14px]"
+                  className="w-full bg-transparent border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white px-6 py-3 rounded-xl hover:border-[#14B8A6] flex items-center justify-center gap-2 transition-colors text-[14px] cursor-pointer"
                 >
                   Skip for Now
                 </button>
               </div>
             )}
 
-            {/* Step 3: Complete */}
+            {/* Step 4: Complete */}
             {step === 'complete' && connected && publicKey && (
               <div className="space-y-6 text-center">
                 <div className="flex items-center justify-center">
@@ -205,7 +293,7 @@ const SignUp: NextPage = () => {
                 </div>
 
                 <Link href="/dashboard">
-                  <button className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold flex items-center justify-center px-6 py-3 rounded-xl hover:opacity-90 transition-opacity gap-2">
+                  <button className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold flex items-center justify-center px-6 py-3 rounded-xl hover:opacity-90 transition-opacity gap-2 cursor-pointer">
                     <span>Go to Dashboard</span>
                     <i className="ri-arrow-right-line"></i>
                   </button>

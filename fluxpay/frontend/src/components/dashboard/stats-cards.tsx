@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react'
 import { DollarSign, ArrowUpDown, Clock, CheckCircle, TrendingUp, TrendingDown, type LucideIcon } from 'lucide-react'
-import { mockStats } from '@/lib/mock-data'
+import { getPaymentStats, type PaymentStats } from '@/services/api/payments'
 
 const iconMap: Record<string, LucideIcon> = {
   DollarSign,
@@ -35,12 +36,53 @@ const themeMap: Record<string, { bg: string; iconBg: string; iconColor: string; 
   },
 }
 
+function formatCurrency(amount: number): string {
+  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+}
+
 export default function StatsCards() {
-  const stats = Object.values(mockStats)
+  const [stats, setStats] = useState<PaymentStats | null>(null)
+
+  useEffect(() => {
+    getPaymentStats()
+      .then(setStats)
+      .catch(() => setStats(null))
+  }, [])
+
+  const cards = [
+    {
+      label: 'Total Revenue',
+      value: stats ? formatCurrency(stats.totalRevenue) : '$0',
+      change: stats && stats.completedTransactions > 0 ? `${stats.completedTransactions} completed` : '—',
+      trend: 'up' as const,
+      icon: 'DollarSign',
+    },
+    {
+      label: 'Transactions',
+      value: stats ? stats.totalTransactions.toLocaleString() : '0',
+      change: stats && stats.completedTransactions > 0 ? `${stats.completedTransactions} completed` : '—',
+      trend: 'up' as const,
+      icon: 'ArrowUpDown',
+    },
+    {
+      label: 'Pending Settlements',
+      value: stats ? formatCurrency(stats.pendingSettlementAmount) : '$0',
+      change: stats && stats.pendingSettlementCount > 0 ? `${stats.pendingSettlementCount} pending` : '—',
+      trend: 'down' as const,
+      icon: 'Clock',
+    },
+    {
+      label: 'Success Rate',
+      value: stats ? `${stats.successRate}%` : '100%',
+      change: stats && stats.totalTransactions > 0 ? `${stats.totalTransactions} total` : '—',
+      trend: 'up' as const,
+      icon: 'CheckCircle',
+    },
+  ]
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5">
-      {stats.map((stat) => {
+      {cards.map((stat) => {
         const Icon = iconMap[stat.icon] || DollarSign
         const theme = themeMap[stat.label] || themeMap['Total Revenue']
 
@@ -68,7 +110,7 @@ export default function StatsCards() {
                 className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${
                   stat.trend === 'up'
                     ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-                    : 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10'
+                    : 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10'
                 }`}
               >
                 {stat.trend === 'up' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
