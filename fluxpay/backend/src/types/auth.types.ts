@@ -31,6 +31,7 @@ export interface SignupRequestBody {
   password?: string;
   message: string;
   signature: string;
+  preferredTokenSymbol?: string;
 }
 
 export interface LoginRequestBody {
@@ -46,6 +47,11 @@ export interface AuthResponse {
     walletAddress: string;
     email: string;
     businessName: string;
+    preferredTokenMint?: string;
+    preferredTokenSymbol?: string;
+    preferredTokenDecimals?: number;
+    hasSelectedToken?: boolean;
+    preferredTokenUpdatedAt?: string;
   };
 }
 
@@ -61,6 +67,11 @@ export interface MeResponse {
   businessName: string;
   emailVerified: boolean;
   createdAt: string;
+  preferredTokenMint?: string;
+  preferredTokenSymbol?: string;
+  preferredTokenDecimals?: number;
+  hasSelectedToken?: boolean;
+  preferredTokenUpdatedAt?: string;
 }
 
 export interface ErrorResponse {

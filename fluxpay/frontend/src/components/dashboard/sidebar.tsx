@@ -1,5 +1,6 @@
 import { useRouter } from 'next/router'
 import Link from 'next/link'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   LayoutDashboard,
   CreditCard,
@@ -67,16 +68,20 @@ const navSections = [
 
 export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }: SidebarProps) {
   const router = useRouter()
+  const { logout } = useAuth()
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return router.pathname === '/dashboard'
     return router.pathname.startsWith(href)
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('sessionToken')
-    localStorage.removeItem('walletAddress')
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch (error) {
+      // Fallback if logout fails
+      router.push('/login')
+    }
   }
 
   return (
@@ -164,6 +169,23 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
 
         {/* Footer */}
         <div className="flex-shrink-0 px-3 pb-4 pt-2 border-t border-gray-200 dark:border-white/[0.06] space-y-2">
+          {/* Pricing Card */}
+          {!collapsed && (
+            <Link href="/dashboard/billing">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-900/20 dark:to-teal-900/20 border border-purple-200 dark:border-purple-800/30 cursor-pointer hover:shadow-md transition-all">
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-1">
+                  Current Plan
+                </p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white mb-1">
+                  Pro Plan
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  $50/month
+                </p>
+              </div>
+            </Link>
+          )}
+
           {/* Collapse toggle - desktop only */}
           <button
             onClick={() => setCollapsed(!collapsed)}

@@ -13,6 +13,8 @@ import blockchainRoutes from './routes/blockchain.routes';
 import invoiceRoutes from './routes/invoice.routes';
 import subscriptionRoutes from './routes/subscription.routes';
 import teamRoutes from './routes/team.routes';
+import tokenRoutes from './routes/token.routes';
+import merchantRoutes from './routes/merchant.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -67,6 +69,8 @@ app.use('/api/blockchain', blockchainRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/team', teamRoutes);
+app.use('/api/tokens', tokenRoutes);
+app.use('/api/merchants', merchantRoutes);
 
 // ─── 404 Handler ────────────────────────────────────────────
 app.use((req, res) => {

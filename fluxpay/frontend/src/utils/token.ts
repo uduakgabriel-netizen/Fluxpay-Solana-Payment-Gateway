@@ -19,6 +19,13 @@ export interface StoredMerchant {
   walletAddress: string
   email: string
   businessName: string
+  emailVerified?: boolean
+  createdAt?: string
+  preferredTokenMint?: string
+  preferredTokenSymbol?: string
+  preferredTokenDecimals?: number
+  hasSelectedToken?: boolean
+  preferredTokenUpdatedAt?: string
 }
 
 export function getMerchant(): StoredMerchant | null {

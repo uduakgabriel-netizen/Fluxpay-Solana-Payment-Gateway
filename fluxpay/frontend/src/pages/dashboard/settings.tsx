@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import DashboardLayout from '@/components/dashboard/layout'
-import { User, Bell, Shield } from 'lucide-react'
+import { User, Bell, Shield, DollarSign } from 'lucide-react'
+import TokenSelector from '@/components/token-selector/TokenSelector'
 import { useAuth } from '@/contexts/AuthContext'
 import { updateProfile } from '@/services/api/auth'
+import { SUPPORTED_TOKENS, type Token, getTokenByMint } from '@/config/tokens'
 
 export default function SettingsPage() {
   const { merchant, refreshMerchant } = useAuth()
@@ -10,6 +12,12 @@ export default function SettingsPage() {
   const [email, setEmail] = useState(merchant?.email || '')
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
+  
+  // Token preference state
+  const [currentToken, setCurrentToken] = useState<Token | null>(null)
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null)
+  const [savingToken, setSavingToken] = useState(false)
+  const [tokenMsg, setTokenMsg] = useState('')
 
   // Notification toggle states
   const [notifs, setNotifs] = useState({
@@ -18,6 +26,17 @@ export default function SettingsPage() {
     refundRequests: false,
     weeklyReports: true,
   })
+
+  useEffect(() => {
+    // Load current token preference
+    if (merchant?.preferredTokenMint) {
+      const token = getTokenByMint(merchant.preferredTokenMint);
+      if (token) {
+        setCurrentToken(token);
+        setSelectedToken(token);
+      }
+    }
+  }, [merchant])
 
   const handleSaveProfile = async () => {
     setSaving(true)
@@ -31,6 +50,45 @@ export default function SettingsPage() {
     } finally {
       setSaving(false)
       setTimeout(() => setSaveMsg(''), 3000)
+    }
+  }
+
+  const handleSaveToken = async () => {
+    if (!selectedToken) {
+      setTokenMsg('Please select a token')
+      return
+    }
+
+    setSavingToken(true)
+    setTokenMsg('')
+
+    try {
+      const response = await fetch('/api/merchants/preferred-token', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          preferredTokenMint: selectedToken.mint,
+          preferredTokenSymbol: selectedToken.symbol,
+          preferredTokenDecimals: selectedToken.decimals,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to save token preference')
+      }
+
+      setCurrentToken(selectedToken)
+      setTokenMsg('Token preference updated successfully!')
+      await refreshMerchant()
+    } catch (err: any) {
+      console.error('Error saving token preference:', err)
+      setTokenMsg(err.message || 'Failed to save preference')
+    } finally {
+      setSavingToken(false)
+      setTimeout(() => setTokenMsg(''), 3000)
     }
   }
 
@@ -95,6 +153,57 @@ export default function SettingsPage() {
                   {saveMsg}
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Settings */}
+        <div className="bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-white/[0.06] rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <DollarSign size={18} className="text-[#8B5CF6]" />
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Payment Settings</h3>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Settlement Token</label>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                Select which token you want to receive payments in. Customers can pay with any token, and we'll automatically swap it to your preference.
+              </p>
+              
+              {currentToken && (
+                <div className="mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30">
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-300">
+                    Current: {currentToken.name} ({currentToken.symbol})
+                  </p>
+                </div>
+              )}
+              
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Choose New Token</label>
+                <TokenSelector
+                  selectedToken={selectedToken}
+                  onSelect={setSelectedToken}
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSaveToken}
+                  disabled={savingToken || selectedToken?.mint === currentToken?.mint}
+                  className="px-6 py-2.5 bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+                >
+                  {savingToken ? 'Saving...' : 'Save Token Preference'}
+                </button>
+                {tokenMsg && (
+                  <p className={`text-sm font-medium ${tokenMsg.includes('success') ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                    {tokenMsg}
+                  </p>
+                )}
+              </div>
+
+              <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                💡 Changes apply to new payments only. Existing payments will complete with their original settlement token.
+              </p>
             </div>
           </div>
         </div>

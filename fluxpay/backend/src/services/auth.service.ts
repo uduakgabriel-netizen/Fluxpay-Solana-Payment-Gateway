@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { generateNonce, verifyWalletSignature } from '../utils/crypto';
 import { generateToken, getSessionExpiry } from '../utils/jwt';
+import TokenService from './token.service';
+import { getTokenBySymbol } from '../utils/token-registry';
 import {
   AuthResponse,
   NonceResponse,
@@ -113,15 +115,31 @@ export async function verifyAndLogin(data: VerifyRequestBody): Promise<AuthRespo
       walletAddress: merchant.walletAddress,
       email: merchant.email,
       businessName: merchant.businessName,
+      preferredTokenMint: merchant.preferredTokenMint || undefined,
+      preferredTokenSymbol: merchant.preferredTokenSymbol || undefined,
+      preferredTokenDecimals: merchant.preferredTokenDecimals || undefined,
+      hasSelectedToken: merchant.hasSelectedToken,
+      preferredTokenUpdatedAt: merchant.preferredTokenUpdatedAt?.toISOString(),
     },
   };
 }
 
 /**
- * Sign up a new merchant with wallet + email + business name
+ * Sign up a new merchant with wallet + email + business name + preferred token
  */
 export async function signup(data: SignupRequestBody): Promise<AuthResponse> {
-  const { walletAddress, email, businessName, password, message, signature } = data;
+  const { walletAddress, email, businessName, password, message, signature, preferredTokenSymbol } = data;
+
+  // 0. Validate token preference is provided
+  if (!preferredTokenSymbol) {
+    throw new AppError('Please select a settlement token', 400);
+  }
+
+  // 0.5. Validate token is supported
+  const tokenInfo = getTokenBySymbol(preferredTokenSymbol);
+  if (!tokenInfo) {
+    throw new AppError(`Token ${preferredTokenSymbol} is not supported`, 400);
+  }
 
   // 1. Fetch and validate nonce
   const nonceRecord = await prisma.nonce.findUnique({
@@ -174,13 +192,18 @@ export async function signup(data: SignupRequestBody): Promise<AuthResponse> {
     passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   }
 
-  // 8. Create merchant
+  // 8. Create merchant with token preference
   const merchant = await prisma.merchant.create({
     data: {
       walletAddress,
       email,
       businessName,
       passwordHash,
+      preferredTokenMint: tokenInfo.mintAddress,
+      preferredTokenSymbol: tokenInfo.symbol,
+      preferredTokenDecimals: tokenInfo.decimals,
+      hasSelectedToken: true,
+      preferredTokenUpdatedAt: new Date(),
     },
   });
 
@@ -210,6 +233,11 @@ export async function signup(data: SignupRequestBody): Promise<AuthResponse> {
       walletAddress: merchant.walletAddress,
       email: merchant.email,
       businessName: merchant.businessName,
+      preferredTokenMint: merchant.preferredTokenMint,
+      preferredTokenSymbol: merchant.preferredTokenSymbol,
+      preferredTokenDecimals: merchant.preferredTokenDecimals,
+      hasSelectedToken: merchant.hasSelectedToken,
+      preferredTokenUpdatedAt: merchant.preferredTokenUpdatedAt?.toISOString(),
     },
   };
 }
@@ -269,6 +297,11 @@ export async function login(data: LoginRequestBody): Promise<AuthResponse> {
       walletAddress: merchant.walletAddress,
       email: merchant.email,
       businessName: merchant.businessName,
+      preferredTokenMint: merchant.preferredTokenMint || undefined,
+      preferredTokenSymbol: merchant.preferredTokenSymbol || undefined,
+      preferredTokenDecimals: merchant.preferredTokenDecimals || undefined,
+      hasSelectedToken: merchant.hasSelectedToken,
+      preferredTokenUpdatedAt: merchant.preferredTokenUpdatedAt?.toISOString(),
     },
   };
 }
@@ -292,6 +325,11 @@ export async function getMe(merchantId: string): Promise<MeResponse> {
     businessName: merchant.businessName,
     emailVerified: merchant.emailVerified,
     createdAt: merchant.createdAt.toISOString(),
+    preferredTokenMint: merchant.preferredTokenMint || undefined,
+    preferredTokenSymbol: merchant.preferredTokenSymbol || undefined,
+    preferredTokenDecimals: merchant.preferredTokenDecimals || undefined,
+    hasSelectedToken: merchant.hasSelectedToken,
+    preferredTokenUpdatedAt: merchant.preferredTokenUpdatedAt?.toISOString(),
   };
 }
 

@@ -29,27 +29,102 @@ export default function AuthPage() {
     console.log('Login with passkey:', { walletAddress, passkey })
   }
 
-  const handleCreatePasskey = (e: React.FormEvent) => {
+  const handleCreatePasskey = async (e: React.FormEvent) => {
     e.preventDefault()
     if (passkey !== confirmPasskey) {
       setError('Passkeys do not match')
       return
     }
-    console.log('Passkey created:', passkey)
+
+    if (!publicKey) {
+      setError('Wallet not connected')
+      return
+    }
+
+    try {
+      setStep('sign')
+      const walletAddr = publicKey.toBase58()
+      
+      // Create account with wallet signature
+      const response = await fetch('http://localhost:3001/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress: walletAddr,
+          email: walletAddress,
+          businessName: passkey,
+          passkey: confirmPasskey,
+          message: walletAddr,
+          signature: walletAddr,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Signup failed')
+      }
+
+      // Success - redirect or show success
+      console.log('Account created successfully')
+      setStep('passkey')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account')
+      setStep('connect')
+    }
   }
 
   const handleSignMessage = async () => {
     if (!publicKey || !signMessage) return
 
     try {
-      const message = new TextEncoder().encode(
-        'Sign this message to authenticate with FluxPay.\nThis will not trigger a blockchain transaction.'
-      )
-      const signature = await signMessage(message)
-      console.log('Signature:', signature)
+      setStep('sign')
+      const walletAddr = publicKey.toBase58()
+
+      // Step 1: Get nonce from backend
+      const nonceResponse = await fetch('http://localhost:3001/api/auth/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: walletAddr }),
+      })
+
+      if (!nonceResponse.ok) {
+        throw new Error('Failed to get nonce')
+      }
+
+      const { nonce } = await nonceResponse.json()
+
+      // Step 2: Create message with nonce
+      const messageText = `Sign this message to verify your wallet: ${nonce}`
+      const messageBytes = new TextEncoder().encode(messageText)
+
+      // Step 3: Sign message with wallet
+      const signatureBytes = await signMessage(messageBytes)
+      
+      // Step 4: Convert signature to base64
+      const signatureBase64 = Buffer.from(signatureBytes).toString('base64')
+
+      // Step 5: Send to signup endpoint
+      const signupResponse = await fetch('http://localhost:3001/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress: walletAddr,
+          message: messageText,
+          signature: signatureBase64,
+          email: '',
+          businessName: '',
+        }),
+      })
+
+      if (!signupResponse.ok) {
+        const data = await signupResponse.json()
+        throw new Error(data.error || 'Signup failed')
+      }
+
       setStep('passkey')
     } catch (err) {
-      setError('Failed to sign message')
+      setError(err instanceof Error ? err.message : 'Failed to sign message')
+      setStep('connect')
     }
   }
 

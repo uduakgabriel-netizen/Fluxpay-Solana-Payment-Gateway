@@ -1,4 +1,5 @@
 import type { NextPage } from 'next'
+import Link from 'next/link'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import Button from '@/components/ui/button'
@@ -482,11 +483,11 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
               <ul className="space-y-3 sm:space-y-4 mb-8 sm:mb-10">
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
-                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">USDC, SOL, USDT support</span>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Up to 100 transactions/month</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
-                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Up to $10K monthly volume</span>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">USDC, SOL, USDT support</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
@@ -496,10 +497,16 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
                   <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Basic API access</span>
                 </li>
+                <li className="flex items-start gap-3">
+                  <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Email support</span>
+                </li>
               </ul>
-              <Button variant="outline" size="lg" href="/signup" className="w-full">
-                Get Started
-              </Button>
+              <Link href="/signup">
+                <button className="w-full py-3 px-6 rounded-xl font-semibold transition-all duration-200 cursor-pointer bg-gray-100 dark:bg-white/[0.05] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/[0.1]">
+                  Start Free Trial
+                </button>
+              </Link>
             </motion.div>
 
             {/* Pro Plan - Most Popular */}
@@ -516,16 +523,14 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
               </div>
               <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">Pro</h3>
               <div className="flex items-baseline gap-2 mb-4 sm:mb-6">
-                <span className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white">$49</span>
+                <span className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white">$50</span>
                 <span className="text-lg sm:text-xl text-gray-500 dark:text-gray-400">/mo</span>
               </div>
               <div className="border-t border-gray-200 dark:border-gray-700 pt-6 sm:pt-8 mb-6 sm:mb-8"></div>
               <ul className="space-y-3 sm:space-y-4 mb-8 sm:mb-10">
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
-                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">
-                    All top 10 SPL tokens: {TOP_SPL_TOKENS.join(', ')}
-                  </span>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">All top 10 SPL tokens</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
@@ -547,10 +552,16 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
                   <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Priority support</span>
                 </li>
+                <li className="flex items-start gap-3">
+                  <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">3 months free trial</span>
+                </li>
               </ul>
-              <Button variant="primary" size="lg" href="/signup" className="w-full">
-                Start Free Trial
-              </Button>
+              <Link href="/signup">
+                <button className="w-full py-3 px-6 rounded-xl font-semibold transition-all duration-200 cursor-pointer bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white hover:opacity-90 shadow-lg shadow-purple-500/20">
+                  Start Free Trial
+                </button>
+              </Link>
             </motion.div>
 
             {/* Enterprise Plan */}
@@ -582,20 +593,22 @@ const response = await fetch('https://api.fluxpay.io/v1/payments', {
                 </li>
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
-                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Dedicated support</span>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Dedicated account manager</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
+                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">24/7 support</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
                   <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">SLA guarantee</span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <i className="ri-check-line text-lg sm:text-xl text-teal-500 dark:text-teal-400 mt-0.5"></i>
-                  <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">Custom integrations</span>
-                </li>
               </ul>
-              <Button variant="outline" size="lg" href="/contact" className="w-full">
-                Contact Sales
-              </Button>
+              <Link href="/contact">
+                <button className="w-full py-3 px-6 rounded-xl font-semibold transition-all duration-200 cursor-pointer bg-gray-100 dark:bg-white/[0.05] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/[0.1]">
+                  Contact Sales
+                </button>
+              </Link>
             </motion.div>
           </div>
         </div>

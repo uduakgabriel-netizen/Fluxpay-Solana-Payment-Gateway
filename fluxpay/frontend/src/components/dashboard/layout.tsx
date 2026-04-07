@@ -4,6 +4,7 @@ import Sidebar from '@/components/dashboard/sidebar'
 import Header from '@/components/dashboard/header'
 import LoadingSkeleton from '@/components/dashboard/loading-skeleton'
 import Footer from '@/components/layout/Footer'
+import { useTokenGuard } from '@/hooks/useTokenGuard'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -16,6 +17,9 @@ export default function DashboardLayout({ children, pageTitle = 'Dashboard' }: D
   const [mobileOpen, setMobileOpen] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   const [loading, setLoading] = useState(true)
+  
+  // Check token selection
+  const { isTokenSelected, isLoading: tokenLoading } = useTokenGuard()
 
   // Auth check
   useEffect(() => {
@@ -47,18 +51,9 @@ export default function DashboardLayout({ children, pageTitle = 'Dashboard' }: D
     setMobileOpen(false)
   }, [router.pathname])
 
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F19] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-12 h-12 border-[3px] border-[#8B5CF6]/20 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-[3px] border-transparent border-t-[#8B5CF6] rounded-full animate-spin" />
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 animate-pulse">Checking authentication...</p>
-        </div>
-      </div>
-    )
+  // Show loading if checking token selection
+  if (tokenLoading) {
+    return <LoadingSkeleton />
   }
 
   return (

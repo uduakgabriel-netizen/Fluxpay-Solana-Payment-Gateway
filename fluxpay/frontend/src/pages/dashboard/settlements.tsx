@@ -32,7 +32,7 @@ export default function SettlementsPage() {
     fetchSettlements()
   }, [fetchSettlements])
 
-  const formatAmount = (amount: number) => `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+  const formatAmount = (amount?: number) => amount !== undefined && amount !== null ? `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'
   const formatDate = (date: string | null) => date ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending'
 
   return (

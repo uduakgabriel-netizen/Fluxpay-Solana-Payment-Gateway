@@ -1,5 +1,6 @@
 import dynamic from 'next/dynamic'
 import DashboardLayout from '@/components/dashboard/layout'
+import TokenPreferenceBanner from '@/components/dashboard/TokenPreferenceBanner'
 import StatsCards from '@/components/dashboard/stats-cards'
 import RecentTransactions from '@/components/dashboard/recent-transactions'
 import QuickActions from '@/components/dashboard/quick-actions'
@@ -14,6 +15,15 @@ export default function DashboardPage() {
   return (
     <DashboardLayout pageTitle="Dashboard">
       <div className="space-y-6 animate-in fade-in duration-500">
+        {/* Token preference banner for existing merchants */}
+        {!loading && merchant && (
+          <TokenPreferenceBanner
+            preferredTokenMint={merchant.preferredTokenMint}
+            preferredTokenSymbol={merchant.preferredTokenSymbol}
+            hasSelectedToken={merchant.hasSelectedToken}
+          />
+        )}
+
         {/* Welcome header */}
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">

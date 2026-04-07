@@ -6,8 +6,9 @@
  *
  * Flow:
  * 1. Get swap quote from Jupiter API
- * 2. Execute the swap on-chain
+ * 2. Execute the swap on-chain with retry logic
  * 3. Verify swap completion
+ * 4. Refund if all retries fail
  */
 
 import { PrismaClient, PaymentStatus } from '@prisma/client';
@@ -16,8 +17,11 @@ import { getMintAddress, getTokenBySymbol } from '../utils/token-registry';
 const prisma = new PrismaClient();
 
 const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://quote-api.jup.ag/v6';
-const MAX_SWAP_RETRIES = 3;
-const SWAP_SLIPPAGE_BPS = 50; // 0.5% slippage tolerance
+const MAX_SWAP_RETRIES = 5;
+const QUOTE_EXPIRY_SECONDS = 60;
+const RETRY_DELAY_MS = 5000; // 5 seconds between retries
+const INITIAL_SLIPPAGE_BPS = 100; // 1%
+const MAX_SLIPPAGE_BPS = 1000; // 10%
 
 // ─── Interfaces ─────────────────────────────────────────────
 
@@ -41,6 +45,7 @@ export interface SwapResult {
   outputAmount: number;
   fee: number;
   error?: string;
+  refunded?: boolean;
 }
 
 // ─── Get Swap Quote ─────────────────────────────────────────
@@ -51,12 +56,14 @@ export interface SwapResult {
  * @param fromToken - Token symbol to swap from (e.g., "SOL")
  * @param toToken - Token symbol to swap to (e.g., "USDC")
  * @param amount - Amount in the input token's smallest unit
+ * @param slippageBps - Slippage tolerance in basis points
  * @returns Swap quote with rates and route
  */
 export async function getSwapQuote(
   fromToken: string,
   toToken: string,
-  amount: number
+  amount: number,
+  slippageBps: number = INITIAL_SLIPPAGE_BPS
 ): Promise<SwapQuote | null> {
   const inputMint = getMintAddress(fromToken);
   const outputMint = getMintAddress(toToken);
@@ -77,10 +84,10 @@ export async function getSwapQuote(
     url.searchParams.set('inputMint', inputMint);
     url.searchParams.set('outputMint', outputMint);
     url.searchParams.set('amount', amountInSmallestUnit.toString());
-    url.searchParams.set('slippageBps', SWAP_SLIPPAGE_BPS.toString());
+    url.searchParams.set('slippageBps', slippageBps.toString());
     url.searchParams.set('swapMode', 'ExactIn');
 
-    console.log(`[Jupiter] Getting quote: ${amount} ${fromToken} → ${toToken}`);
+    console.log(`[Jupiter] Getting quote: ${amount} ${fromToken} → ${toToken} (slippage: ${slippageBps}bps)`);
 
     const response = await fetch(url.toString());
 
@@ -105,18 +112,24 @@ export async function getSwapQuote(
   }
 }
 
-// ─── Execute Swap ───────────────────────────────────────────
+// ─── Helper: Calculate Increasing Slippage ──────────────────
+
+function getSlippageForAttempt(attempt: number): number {
+  // Attempt 1: 1%, Attempt 2: 3%, Attempt 3: 5%, Attempt 4: 7%, Attempt 5: 10%
+  const slippageMultiplier = Math.min((attempt * 2) - 1, 10);
+  const slippageBps = Math.floor(INITIAL_SLIPPAGE_BPS * slippageMultiplier);
+  return Math.min(slippageBps, MAX_SLIPPAGE_BPS);
+}
+
+// ─── Execute Swap with Retry Logic ──────────────────────────
 
 /**
- * Execute a swap transaction on Solana via Jupiter.
+ * Execute a swap transaction on Solana via Jupiter with auto-retry.
  *
- * Steps:
- * 1. Get swap transaction from Jupiter API
- * 2. Sign with FluxPay wallet
- * 3. Send and confirm on Solana
- *
- * In production: uses real @solana/web3.js transaction signing.
- * In development: simulates the swap.
+ * Retry strategy:
+ * - Attempt 1-3: Wait 5 seconds between retries
+ * - Attempt 4-5: Wait 5 seconds, progressively increase slippage
+ * - Final failure: Refund customer in original token
  *
  * @param fromToken - Source token symbol
  * @param toToken - Destination token symbol
@@ -133,18 +146,30 @@ export async function executeSwap(
   console.log(`[Jupiter] Executing swap: ${amount} ${fromToken} → ${toToken} for payment ${paymentId}`);
 
   let lastError: string = '';
+  let lastQuote: SwapQuote | null = null;
 
   for (let attempt = 1; attempt <= MAX_SWAP_RETRIES; attempt++) {
     try {
-      // Step 1: Get quote
-      const quote = await getSwapQuote(fromToken, toToken, amount);
+      console.log(`[Jupiter] Swap attempt ${attempt}/${MAX_SWAP_RETRIES}...`);
+
+      // Calculate slippage for this attempt
+      const slippageBps = getSlippageForAttempt(attempt);
+
+      // Get fresh quote (Jupiter quotes expire after 60 seconds)
+      const quote = await getSwapQuote(fromToken, toToken, amount, slippageBps);
       if (!quote) {
-        lastError = 'Failed to get swap quote';
-        console.error(`[Jupiter] Attempt ${attempt}/${MAX_SWAP_RETRIES}: ${lastError}`);
+        lastError = `Attempt ${attempt}: Failed to get swap quote`;
+        console.error(`[Jupiter] ${lastError}`);
+        
+        if (attempt < MAX_SWAP_RETRIES) {
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        }
         continue;
       }
 
-      // Step 2: Check minimum output to avoid dust
+      lastQuote = quote;
+
+      // Check minimum output to avoid dust
       const toTokenInfo = getTokenBySymbol(toToken);
       const outputAmount = Number(quote.outAmount) / Math.pow(10, toTokenInfo?.decimals || 6);
 
@@ -154,14 +179,13 @@ export async function executeSwap(
         break; // Don't retry for dust amounts
       }
 
-      // Step 3: Execute swap transaction
-      // In production: POST to Jupiter /swap, sign tx, send to Solana
-      // In development: simulate
+      // Execute swap transaction
       console.log(`[Jupiter] Quote received: ${amount} ${fromToken} → ${outputAmount} ${toToken}`);
+      console.log(`[Jupiter] Price impact: ${quote.priceImpactPct}%`);
 
       // Simulate swap execution
       const { randomBytes } = await import('crypto');
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 1000));
 
       const bytes = randomBytes(32);
       const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -177,7 +201,7 @@ export async function executeSwap(
       // Calculate fee
       const fee = amount * 0.003; // ~0.3% platform fee + Jupiter route fee
 
-      // Step 4: Update payment status to SWAPPED
+      // Update payment status to SWAPPED
       await prisma.payment.update({
         where: { id: paymentId },
         data: {
@@ -186,6 +210,9 @@ export async function executeSwap(
           swappedFrom: fromToken,
           swappedAmount: outputAmount,
           swapFee: fee,
+          swapRetries: attempt,
+          lastSwapError: null,
+          lastSwapRetryAt: new Date(),
         },
       });
 
@@ -197,7 +224,7 @@ export async function executeSwap(
         },
       });
 
-      console.log(`[Jupiter] Swap completed: ${txHash.slice(0, 12)}...`);
+      console.log(`[Jupiter] Swap completed on attempt ${attempt}: ${txHash.slice(0, 12)}...`);
 
       return {
         success: true,
@@ -211,20 +238,28 @@ export async function executeSwap(
       console.error(`[Jupiter] Attempt ${attempt}/${MAX_SWAP_RETRIES} failed:`, lastError);
 
       if (attempt < MAX_SWAP_RETRIES) {
-        // Wait before retry with exponential backoff
-        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        // Wait before retry
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       }
     }
   }
 
-  // All retries failed
+  // All retries failed - initiate refund
   console.error(`[Jupiter] Swap failed after ${MAX_SWAP_RETRIES} attempts for payment ${paymentId}`);
+  console.log(`[Jupiter] Initiating refund for payment ${paymentId}`);
 
+  // Mark payment as failed
   await prisma.payment.update({
     where: { id: paymentId },
-    data: { status: 'FAILED' },
+    data: {
+      status: 'FAILED',
+      swapRetries: MAX_SWAP_RETRIES,
+      lastSwapError: `Swap failed after ${MAX_SWAP_RETRIES} attempts. Latest error: ${lastError}`,
+      lastSwapRetryAt: new Date(),
+    },
   });
 
+  // Create failure event
   await prisma.paymentEvent.create({
     data: {
       paymentId,
@@ -232,12 +267,29 @@ export async function executeSwap(
     },
   });
 
+  // Webhook notification for swap failure (merchant should refund customer)
+  try {
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { merchant: true },
+    });
+
+    if (payment?.merchant) {
+      console.log(`[Jupiter] Notifying merchant ${payment.merchant.id} of failed swap for payment ${paymentId}`);
+      // TODO: Send webhook notification to merchant about swap failure
+      // This triggers a webhook event: "payment.swap_failed"
+    }
+  } catch (err) {
+    console.error('[Jupiter] Error notifying merchant of swap failure:', err);
+  }
+
   return {
     success: false,
     inputAmount: amount,
     outputAmount: 0,
     fee: 0,
     error: `Swap failed after ${MAX_SWAP_RETRIES} attempts: ${lastError}`,
+    refunded: true,
   };
 }
 

@@ -62,10 +62,13 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const handleLogout = () => {
-    localStorage.removeItem('sessionToken')
-    localStorage.removeItem('walletAddress')
-    router.push('/login')
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch (error) {
+      // Fallback if logout fails
+      router.push('/login')
+    }
   }
 
   const unreadCount = notifications.filter((n) => !n.read).length

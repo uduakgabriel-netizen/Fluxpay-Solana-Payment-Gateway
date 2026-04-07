@@ -12,6 +12,11 @@ interface MerchantInfo {
   businessName: string
   emailVerified?: boolean
   createdAt?: string
+  preferredTokenMint?: string
+  preferredTokenSymbol?: string
+  preferredTokenDecimals?: number
+  hasSelectedToken?: boolean
+  preferredTokenUpdatedAt?: string
 }
 
 interface AuthContextType {
@@ -19,7 +24,7 @@ interface AuthContextType {
   merchant: MerchantInfo | null
   loading: boolean
   loginWithWallet: () => Promise<void>
-  signupWithWallet: (email: string, businessName: string, password?: string) => Promise<void>
+  signupWithWallet: (email: string, businessName: string, preferredTokenSymbol: string, password?: string) => Promise<void>
   loginWithEmail: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refreshMerchant: () => Promise<void>
@@ -49,12 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await authApi.getMe()
         setMerchantState(me)
-        setMerchant({
-          id: me.id,
-          walletAddress: me.walletAddress,
-          email: me.email,
-          businessName: me.businessName,
-        })
+        setMerchant(me)
         setIsAuthenticated(true)
       } catch {
         // Token invalid or expired
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 3. Sign the message with wallet
     const signatureBytes = await signMessage(encodedMessage)
-    const signature = bs58.encode(signatureBytes)
+    const signature = Buffer.from(signatureBytes).toString('base64')
 
     // 4. Verify with backend
     const result = await authApi.verifyWallet({
@@ -105,12 +105,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 5. Store session
     setToken(result.sessionToken)
-    setMerchant(result.merchant)
     setMerchantState(result.merchant)
+    setMerchant(result.merchant)
     setIsAuthenticated(true)
   }, [publicKey, signMessage])
 
-  const signupWithWallet = useCallback(async (email: string, businessName: string, password?: string) => {
+  const signupWithWallet = useCallback(async (email: string, businessName: string, preferredTokenSymbol: string, password?: string) => {
     if (!publicKey || !signMessage) {
       throw new Error('Wallet not connected or signing not supported')
     }
@@ -124,13 +124,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const message = `Sign this message to verify your wallet: ${nonce}`
     const encodedMessage = new TextEncoder().encode(message)
     const signatureBytes = await signMessage(encodedMessage)
-    const signature = bs58.encode(signatureBytes)
+    const signature = Buffer.from(signatureBytes).toString('base64')
 
     // 3. Signup with backend
     const result = await authApi.signup({
       walletAddress,
       email,
       businessName,
+      preferredTokenSymbol,
       password,
       message,
       signature,
@@ -138,8 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 4. Store session
     setToken(result.sessionToken)
-    setMerchant(result.merchant)
     setMerchantState(result.merchant)
+    setMerchant(result.merchant)
     setIsAuthenticated(true)
   }, [publicKey, signMessage])
 
@@ -165,19 +166,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Wallet disconnect may fail if not connected
     }
-    router.push('/login')
+    router.push('/')
   }, [disconnect, router])
 
   const refreshMerchant = useCallback(async () => {
     try {
       const me = await authApi.getMe()
       setMerchantState(me)
-      setMerchant({
-        id: me.id,
-        walletAddress: me.walletAddress,
-        email: me.email,
-        businessName: me.businessName,
-      })
+      setMerchant(me)
     } catch {
       // Silently fail
     }

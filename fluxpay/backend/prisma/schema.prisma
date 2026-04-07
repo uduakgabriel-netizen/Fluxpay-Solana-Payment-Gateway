@@ -10,25 +10,33 @@ datasource db {
 // ─── Auth Models ────────────────────────────────────────────
 
 model Merchant {
-  id              String    @id @default(cuid())
-  walletAddress   String    @unique
-  email           String    @unique
-  emailVerified   Boolean   @default(false)
-  businessName    String
-  passwordHash    String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                        String    @id @default(cuid())
+  walletAddress             String    @unique
+  email                     String    @unique
+  emailVerified             Boolean   @default(false)
+  businessName              String
+  passwordHash              String?
+  
+  // Token preferences
+  preferredTokenMint        String    @default("So11111111111111111111111111111111111111112") // SOL default
+  preferredTokenSymbol      String    @default("SOL")
+  preferredTokenDecimals    Int       @default(9)
+  hasSelectedToken          Boolean   @default(false)
+  preferredTokenUpdatedAt   DateTime  @default(now())
+  
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
-  sessions        Session[]
-  apiKeys         ApiKey[]
-  payments        Payment[]
-  refunds         Refund[]
-  settlements     Settlement[]
-  webhookConfigs  WebhookConfig[]
-  webhookLogs     WebhookLog[]
-  invoices        Invoice[]
-  subscriptions   Subscription[]
-  teamMembers     TeamMember[]
+  sessions                  Session[]
+  apiKeys                   ApiKey[]
+  payments                  Payment[]
+  refunds                   Refund[]
+  settlements               Settlement[]
+  webhookConfigs            WebhookConfig[]
+  webhookLogs               WebhookLog[]
+  invoices                  Invoice[]
+  subscriptions             Subscription[]
+  teamMembers               TeamMember[]
 
   @@map("merchants")
 }
@@ -80,6 +88,46 @@ model Nonce {
   createdAt     DateTime  @default(now())
 
   @@map("nonces")
+}
+
+// ─── Token Management Models ──────────────────────────────
+
+model SupportedToken {
+  id        String    @id @default(cuid())
+  mint      String    @unique // Token mint address
+  symbol    String    // USDC, SOL, etc.
+  name      String    // Full name
+  decimals  Int       // Token decimals
+  logoUrl   String?   // URL to token logo
+  rank      Int       // Display order (1-10)
+  isActive  Boolean   @default(true)
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([mint])
+  @@index([symbol])
+  @@index([rank])
+  @@map("supported_tokens")
+}
+
+model SwapQuote {
+  id              String    @id @default(cuid())
+  paymentId       String    @unique
+  inputMint       String    // Customer's token
+  outputMint      String    // Merchant's preferred token
+  inputAmount     String    // Amount in smallest units
+  expectedOutput  String    // Expected output from Jupiter
+  minOutputAmount String    // Minimum output (with slippage)
+  quote           Json      // Full Jupiter quote response
+  slippageBps     Int       @default(100) // Current slippage in basis points
+  expiresAt       DateTime  // Quote expires after 60 seconds
+  
+  createdAt       DateTime  @default(now())
+
+  @@index([paymentId])
+  @@index([expiresAt])
+  @@map("swap_quotes")
 }
 
 // ─── Webhook Models ─────────────────────────────────────────
@@ -173,6 +221,9 @@ model Payment {
   swappedAmount    Float?
   swapTxHash       String?
   swapFee          Float?        // Fee paid to Jupiter for swap
+  swapRetries      Int           @default(0) // Number of swap attempts
+  lastSwapError    String?       // Last swap error message
+  lastSwapRetryAt  DateTime?     // Timestamp of last swap retry
 
   // Settlement tracking
   settled          Boolean       @default(false)
