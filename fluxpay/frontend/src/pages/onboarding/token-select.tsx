@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import TokenSelector from '@/components/token-selector/TokenSelector';
 import { SUPPORTED_TOKENS, type Token } from '@/config/tokens';
+import apiClient from '@/services/api/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TokenSelectionPage() {
   const router = useRouter();
+  const { refreshMerchant } = useAuth();
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,28 +27,20 @@ export default function TokenSelectionPage() {
 
     try {
       // Update merchant's preferred token
-      const response = await fetch('/api/merchants/preferred-token', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          preferredTokenMint: selectedToken.mint,
-          preferredTokenSymbol: selectedToken.symbol,
-          preferredTokenDecimals: selectedToken.decimals,
-        }),
+      await apiClient.put('/merchants/preferred-token', {
+        preferredTokenMint: selectedToken.mint,
+        preferredTokenSymbol: selectedToken.symbol,
+        preferredTokenDecimals: selectedToken.decimals,
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save token preference');
-      }
+      // Refresh merchant data in auth context to update hasSelectedToken
+      await refreshMerchant();
 
       // Redirect to dashboard
       router.push('/dashboard');
     } catch (err: any) {
       console.error('Error saving token preference:', err);
-      setError(err.message || 'Failed to save your preference');
+      setError(err.response?.data?.error || err.message || 'Failed to save your preference');
     } finally {
       setLoading(false);
     }

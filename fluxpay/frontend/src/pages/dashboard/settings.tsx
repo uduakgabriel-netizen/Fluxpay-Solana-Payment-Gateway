@@ -4,6 +4,7 @@ import { User, Bell, Shield, DollarSign } from 'lucide-react'
 import TokenSelector from '@/components/token-selector/TokenSelector'
 import { useAuth } from '@/contexts/AuthContext'
 import { updateProfile } from '@/services/api/auth'
+import apiClient from '@/services/api/client'
 import { SUPPORTED_TOKENS, type Token, getTokenByMint } from '@/config/tokens'
 
 export default function SettingsPage() {
@@ -63,29 +64,18 @@ export default function SettingsPage() {
     setTokenMsg('')
 
     try {
-      const response = await fetch('/api/merchants/preferred-token', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          preferredTokenMint: selectedToken.mint,
-          preferredTokenSymbol: selectedToken.symbol,
-          preferredTokenDecimals: selectedToken.decimals,
-        }),
+      const response = await apiClient.put('/merchants/preferred-token', {
+        preferredTokenMint: selectedToken.mint,
+        preferredTokenSymbol: selectedToken.symbol,
+        preferredTokenDecimals: selectedToken.decimals,
       })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to save token preference')
-      }
 
       setCurrentToken(selectedToken)
       setTokenMsg('Token preference updated successfully!')
       await refreshMerchant()
     } catch (err: any) {
       console.error('Error saving token preference:', err)
-      setTokenMsg(err.message || 'Failed to save preference')
+      setTokenMsg(err.response?.data?.error || err.message || 'Failed to save preference')
     } finally {
       setSavingToken(false)
       setTimeout(() => setTokenMsg(''), 3000)

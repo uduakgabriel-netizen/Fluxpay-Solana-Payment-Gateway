@@ -52,8 +52,6 @@ const navSections = [
     label: 'BUSINESS',
     items: [
       { name: 'Team', href: '/dashboard/team', icon: Users },
-      { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
-      { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: Repeat },
       { name: 'Billing', href: '/dashboard/billing', icon: Receipt },
     ],
   },

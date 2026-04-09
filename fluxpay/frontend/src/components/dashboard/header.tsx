@@ -30,7 +30,6 @@ const routeTitles: Record<string, string> = {
   '/dashboard/webhooks': 'Webhooks',
   '/dashboard/docs': 'Documentation',
   '/dashboard/team': 'Team',
-  '/dashboard/invoices': 'Invoices',
   '/dashboard/billing': 'Billing',
   '/dashboard/settings': 'Settings',
   '/dashboard/support': 'Support',
@@ -133,7 +132,7 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
                       !notif.read ? 'bg-purple-50/50 dark:bg-purple-500/[0.03]' : ''
                     }`}
                   >
-                    <p className="text-sm text-gray-700 dark:text-gray-300">{notif.message}</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white">{notif.message}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{notif.time}</p>
                   </div>
                 ))}
@@ -180,7 +179,7 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
                       setUserMenuOpen(false)
                       router.push(item.href)
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.03] hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer"
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.03] hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                   >
                     <item.icon size={16} />
                     {item.label}
