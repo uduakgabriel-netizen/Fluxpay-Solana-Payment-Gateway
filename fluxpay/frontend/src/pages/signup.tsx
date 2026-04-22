@@ -26,7 +26,6 @@ const SignUp: NextPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
   const [businessName, setBusinessName] = useState('')
-  const [password, setPassword] = useState('')
   const [selectedToken, setSelectedToken] = useState<Token | null>(null)
 
   // Redirect if already authenticated
@@ -45,7 +44,7 @@ const SignUp: NextPage = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!publicKey || !email || !businessName) return
+    if (!publicKey || !businessName) return
     setError(null)
     // Move to token selection step
     setStep('token')
@@ -59,7 +58,7 @@ const SignUp: NextPage = () => {
     setLoading(true)
     setError(null)
     try {
-      await signupWithWallet(email, businessName, selectedToken.symbol, password || undefined)
+      await signupWithWallet(email, businessName, selectedToken.symbol)
       setStep('passkey')
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Signup failed. Please try again.'
@@ -225,14 +224,13 @@ const SignUp: NextPage = () => {
 
                 <form onSubmit={handleSignup} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Email Address</label>
+                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Email (optional — for notifications only)</label>
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@business.com"
+                      placeholder="merchant@example.com"
                       className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
-                      required
                     />
                   </div>
                   <div>
@@ -246,15 +244,12 @@ const SignUp: NextPage = () => {
                       required
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5">Password <span className="text-gray-400 dark:text-gray-600 normal-case">(optional)</span></label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Set a password for email login"
-                      className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
-                    />
+                  
+                  <div className="bg-transparent border border-blue-500/30 rounded-xl p-3 my-2">
+                    <p className="text-[13px] text-blue-500 flex items-start gap-2">
+                      <i className="ri-information-line mt-0.5"></i>
+                      <span>You will log in with your wallet only. No password needed.</span>
+                    </p>
                   </div>
                   <button
                     type="submit"

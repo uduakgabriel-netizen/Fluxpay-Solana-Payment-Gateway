@@ -21,21 +21,12 @@ export const signupSchema = z.object({
   walletAddress: z
     .string()
     .regex(walletAddressRegex, 'Invalid Solana wallet address'),
-  email: z.string().email('Invalid email address'),
+  email: z.string().email('Invalid email address').optional().or(z.literal('')),
   businessName: z
     .string()
     .min(2, 'Business name must be at least 2 characters')
     .max(100, 'Business name must be at most 100 characters'),
-  password: z
-    .string()
-    .min(6, 'Password must be at least 6 characters')
-    .optional()
-    .or(z.literal('')),
   message: z.string().min(1, 'Message is required'),
   signature: z.string().min(1, 'Signature is required'),
-});
-
-export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  preferredTokenSymbol: z.string().optional(),
 });

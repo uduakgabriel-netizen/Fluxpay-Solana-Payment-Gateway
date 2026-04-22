@@ -53,11 +53,13 @@ export async function checkMerchantBalances() {
           ).catch(logger.error);
 
           // Email alert for merchant
-          await EmailService.sendLowBalanceWarning(merchant.email, {
-            walletAddress: merchant.walletAddress,
-            currentBalance: sol,
-            requiredBalance: MIN_MERCHANT_SOL,
-          }).catch(logger.error);
+          if (merchant.email) {
+            await EmailService.sendLowBalanceWarning(merchant.email, {
+              walletAddress: merchant.walletAddress,
+              currentBalance: sol,
+              requiredBalance: MIN_MERCHANT_SOL,
+            }).catch(logger.error);
+          }
         }
       } catch (error: any) {
         logger.error(

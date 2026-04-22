@@ -125,7 +125,7 @@ export async function approveRefund(req: AuthRequest, res: Response): Promise<vo
     const result = await refundService.approveRefund(
       id,
       req.merchant.id,
-      req.merchant.email
+      req.merchant.email || ''
     );
 
     res.status(200).json(result);

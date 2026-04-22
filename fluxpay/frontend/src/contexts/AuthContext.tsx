@@ -24,8 +24,7 @@ interface AuthContextType {
   merchant: MerchantInfo | null
   loading: boolean
   loginWithWallet: () => Promise<void>
-  signupWithWallet: (email: string, businessName: string, preferredTokenSymbol: string, password?: string) => Promise<void>
-  loginWithEmail: (email: string, password: string) => Promise<void>
+  signupWithWallet: (email: string, businessName: string, preferredTokenSymbol: string) => Promise<void>
   logout: () => Promise<void>
   refreshMerchant: () => Promise<void>
 }
@@ -110,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(true)
   }, [publicKey, signMessage])
 
-  const signupWithWallet = useCallback(async (email: string, businessName: string, preferredTokenSymbol: string, password?: string) => {
+  const signupWithWallet = useCallback(async (email: string, businessName: string, preferredTokenSymbol: string) => {
     if (!publicKey || !signMessage) {
       throw new Error('Wallet not connected or signing not supported')
     }
@@ -132,7 +131,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       businessName,
       preferredTokenSymbol,
-      password,
       message,
       signature,
     })
@@ -144,13 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(true)
   }, [publicKey, signMessage])
 
-  const loginWithEmail = useCallback(async (email: string, password: string) => {
-    const result = await authApi.login(email, password)
-    setToken(result.sessionToken)
-    setMerchant(result.merchant)
-    setMerchantState(result.merchant)
-    setIsAuthenticated(true)
-  }, [])
+
 
   const logout = useCallback(async () => {
     try {
@@ -186,7 +178,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       loginWithWallet,
       signupWithWallet,
-      loginWithEmail,
       logout,
       refreshMerchant,
     }}>

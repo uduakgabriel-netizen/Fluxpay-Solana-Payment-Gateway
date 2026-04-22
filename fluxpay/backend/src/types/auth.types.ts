@@ -9,7 +9,7 @@ export interface AuthRequest extends Request {
 export interface MerchantPayload {
   id: string;
   walletAddress: string;
-  email: string;
+  email?: string | null;
   businessName: string;
 }
 
@@ -26,18 +26,14 @@ export interface VerifyRequestBody {
 
 export interface SignupRequestBody {
   walletAddress: string;
-  email: string;
+  email?: string | null;
   businessName: string;
-  password?: string;
   message: string;
   signature: string;
   preferredTokenSymbol?: string;
 }
 
-export interface LoginRequestBody {
-  email: string;
-  password: string;
-}
+
 
 // API Response shapes
 export interface AuthResponse {
@@ -45,7 +41,7 @@ export interface AuthResponse {
   merchant: {
     id: string;
     walletAddress: string;
-    email: string;
+    email?: string | null;
     businessName: string;
     preferredTokenMint?: string;
     preferredTokenSymbol?: string;
@@ -63,7 +59,7 @@ export interface NonceResponse {
 export interface MeResponse {
   id: string;
   walletAddress: string;
-  email: string;
+  email?: string | null;
   businessName: string;
   emailVerified: boolean;
   createdAt: string;

@@ -19,9 +19,6 @@ const Login: NextPage = () => {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showEmailLogin, setShowEmailLogin] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -51,22 +48,6 @@ const Login: NextPage = () => {
       } else {
         setError(message)
       }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!email || !password) return
-    setLoading(true)
-    setError(null)
-    try {
-      await loginWithEmail(email, password)
-      router.push('/dashboard')
-    } catch (err: any) {
-      const message = err?.response?.data?.error || 'Invalid email or password.'
-      setError(message)
     } finally {
       setLoading(false)
     }
@@ -125,47 +106,19 @@ const Login: NextPage = () => {
                 </div>
                 <div className="relative flex justify-center text-sm">
                   <span className="px-4 text-[12px] text-gray-400 dark:text-slate-500 bg-white dark:bg-[#0B0F19]">
-                    or continue with
+                    or
                   </span>
                 </div>
               </div>
 
-              {/* Email Login */}
-              {!showEmailLogin ? (
-                <button
-                  onClick={() => setShowEmailLogin(true)}
-                  className="w-full bg-transparent border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white px-6 py-3 rounded-xl hover:border-[#14B8A6] flex items-center justify-center gap-2 transition-colors text-[14px] cursor-pointer"
-                >
-                  <i className="ri-mail-line text-lg"></i>
-                  Continue with Email
-                </button>
-              ) : (
-                <form onSubmit={handleEmailLogin} className="space-y-3">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email address"
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
-                    required
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-[#8B5CF6]/40 transition-colors"
-                    required
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] text-white font-semibold px-6 py-3 rounded-xl hover:opacity-90 transition-opacity flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {loading ? 'Signing in...' : 'Sign In'}
-                  </button>
-                </form>
-              )}
+              <div className="text-center bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] rounded-xl p-4">
+                <p className="text-[14px] text-gray-700 dark:text-gray-300 font-medium mb-1">
+                  Email login is not available.
+                </p>
+                <p className="text-[13px] text-gray-500 dark:text-slate-400">
+                  Only wallet authentication is supported.
+                </p>
+              </div>
 
               {/* Sign Up Link */}
               <div className="text-center pt-2">

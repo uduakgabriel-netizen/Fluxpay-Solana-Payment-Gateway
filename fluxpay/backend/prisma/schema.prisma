@@ -9,18 +9,18 @@ datasource db {
 
 model Merchant {
   id                      String          @id @default(cuid())
-  walletAddress           String          @unique
-  email                   String          @unique
-  emailVerified           Boolean         @default(false)
-  businessName            String
-  passwordHash            String?
-  createdAt               DateTime        @default(now())
-  updatedAt               DateTime        @updatedAt
-  hasSelectedToken        Boolean         @default(false)
-  preferredTokenDecimals  Int             @default(9)
-  preferredTokenMint      String          @default("So11111111111111111111111111111111111111112")
-  preferredTokenSymbol    String          @default("SOL")
-  preferredTokenUpdatedAt DateTime        @default(now())
+  walletAddress          String          @unique
+  email                  String?
+  emailVerified          Boolean         @default(false)
+  businessName           String
+  notificationSettings   Json?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  hasSelectedToken       Boolean         @default(false)
+  preferredTokenDecimals Int             @default(9)
+  preferredTokenMint     String          @default("So11111111111111111111111111111111111111112")
+  preferredTokenSymbol   String          @default("SOL")
+  preferredTokenUpdatedAt DateTime       @default(now())
   apiKeys                 ApiKey[]
   invoices                Invoice[]
   payments                Payment[]

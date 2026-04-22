@@ -101,22 +101,13 @@ export default function SettingsPage() {
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Profile</h3>
           </div>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Business Name</label>
                 <input
                   type="text"
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white outline-none focus:border-[#8B5CF6]/40 transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white outline-none focus:border-[#8B5CF6]/40 transition-colors"
                 />
               </div>
@@ -204,26 +195,59 @@ export default function SettingsPage() {
             <Bell size={18} className="text-[#8B5CF6]" />
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Notifications</h3>
           </div>
-          <div className="space-y-3">
-            {([
-              { key: 'paymentReceived' as const, label: 'Payment received', desc: 'Get notified for every payment' },
-              { key: 'settlementCompleted' as const, label: 'Settlement completed', desc: 'When funds are settled' },
-              { key: 'refundRequests' as const, label: 'Refund requests', desc: 'New refund requests from customers' },
-              { key: 'weeklyReports' as const, label: 'Weekly reports', desc: 'Summary of weekly performance' },
-            ]).map((pref) => (
-              <div key={pref.key} className="flex items-center justify-between py-2">
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{pref.label}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{pref.desc}</p>
-                </div>
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Email Address (optional)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="merchant@example.com"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white outline-none focus:border-[#8B5CF6]/40 transition-colors"
+                />
                 <button
-                  onClick={() => toggleNotif(pref.key)}
-                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${notifs[pref.key] ? 'bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6]' : 'bg-gray-200 dark:bg-white/10'}`}
+                  onClick={handleSaveProfile}
+                  disabled={saving}
+                  className="px-6 py-2.5 bg-gray-100 dark:bg-white/10 text-gray-900 dark:text-white text-sm font-semibold rounded-xl hover:bg-gray-200 dark:hover:bg-white/20 transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${notifs[pref.key] ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>
-            ))}
+            </div>
+            
+            <div className="border-t border-gray-200 dark:border-white/10 my-4"></div>
+
+            <div className="space-y-3">
+              {([
+                { key: 'paymentReceived' as const, label: 'Send payment confirmations to email', desc: 'Get notified for every payment' },
+                { key: 'settlementCompleted' as const, label: 'Send settlement reports to email', desc: 'When funds are settled' },
+                { key: 'refundRequests' as const, label: 'Send security alerts to email', desc: 'New login or wallet connections' },
+                { key: 'weeklyReports' as const, label: 'Send marketing updates', desc: 'News and updates' },
+              ]).map((pref) => (
+                <div key={pref.key} className="flex items-center justify-between py-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{pref.label}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{pref.desc}</p>
+                  </div>
+                  <button
+                    onClick={() => toggleNotif(pref.key)}
+                    className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${notifs[pref.key] ? 'bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6]' : 'bg-gray-200 dark:bg-white/10'}`}
+                  >
+                    <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${notifs[pref.key] ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-gray-200 dark:border-white/10 my-4"></div>
+
+            <div className="bg-transparent border border-blue-500/30 rounded-xl p-3 my-2">
+              <p className="text-[13px] text-blue-500 flex flex-col items-start">
+                <span>Email is used only for notifications.</span>
+                <span>You will always log in with your wallet.</span>
+              </p>
+            </div>
           </div>
         </div>
 

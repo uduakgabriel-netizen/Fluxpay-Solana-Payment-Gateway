@@ -63,7 +63,7 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
 
   const handleLogout = async () => {
     try {
-      await logout()
+      await logOut()
     } catch (error) {
       // Fallback if logout fails
       router.push('/login')
@@ -128,9 +128,8 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
                 {notifications.map((notif) => (
                   <div
                     key={notif.id}
-                    className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer border-b border-gray-100 dark:border-white/[0.03] ${
-                      !notif.read ? 'bg-purple-50/50 dark:bg-purple-500/[0.03]' : ''
-                    }`}
+                    className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer border-b border-gray-100 dark:border-white/[0.03] ${!notif.read ? 'bg-purple-50/50 dark:bg-purple-500/[0.03]' : ''
+                      }`}
                   >
                     <p className="text-sm text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white">{notif.message}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{notif.time}</p>

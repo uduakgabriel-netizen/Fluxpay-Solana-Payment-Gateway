@@ -9,7 +9,6 @@ import {
   NonceResponse,
   MeResponse,
   SignupRequestBody,
-  LoginRequestBody,
   VerifyRequestBody,
 } from '../types/auth.types';
 
@@ -128,7 +127,7 @@ export async function verifyAndLogin(data: VerifyRequestBody): Promise<AuthRespo
  * Sign up a new merchant with wallet + email + business name + preferred token
  */
 export async function signup(data: SignupRequestBody): Promise<AuthResponse> {
-  const { walletAddress, email, businessName, password, message, signature, preferredTokenSymbol } = data;
+  const { walletAddress, email, businessName, message, signature, preferredTokenSymbol } = data;
 
   // 0. Validate token preference is provided
   if (!preferredTokenSymbol) {
@@ -178,27 +177,22 @@ export async function signup(data: SignupRequestBody): Promise<AuthResponse> {
     throw new AppError('A merchant with this wallet address already exists.', 409);
   }
 
-  // 6. Check if email already exists
-  const existingEmail = await prisma.merchant.findUnique({
-    where: { email },
-  });
-  if (existingEmail) {
-    throw new AppError('A merchant with this email already exists.', 409);
+  // 6. Check if email already exists (if provided)
+  if (email && email.trim() !== '') {
+    const existingEmail = await prisma.merchant.findFirst({
+      where: { email },
+    });
+    if (existingEmail) {
+      throw new AppError('A merchant with this email already exists.', 409);
+    }
   }
 
-  // 7. Hash password if provided
-  let passwordHash: string | null = null;
-  if (password && password.length > 0) {
-    passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-  }
-
-  // 8. Create merchant with token preference
+  // 7. Create merchant with token preference
   const merchant = await prisma.merchant.create({
     data: {
       walletAddress,
-      email,
+      email: email && email.trim() !== '' ? email : null,
       businessName,
-      passwordHash,
       preferredTokenMint: tokenInfo.mintAddress,
       preferredTokenSymbol: tokenInfo.symbol,
       preferredTokenDecimals: tokenInfo.decimals,
@@ -242,69 +236,7 @@ export async function signup(data: SignupRequestBody): Promise<AuthResponse> {
   };
 }
 
-/**
- * Login with email and password
- */
-export async function login(data: LoginRequestBody): Promise<AuthResponse> {
-  const { email, password } = data;
 
-  // 1. Find merchant by email
-  const merchant = await prisma.merchant.findUnique({
-    where: { email },
-  });
-
-  if (!merchant) {
-    throw new AppError('Invalid email or password.', 401);
-  }
-
-  // 2. Check if merchant has a password set
-  if (!merchant.passwordHash) {
-    throw new AppError(
-      'This account was created with wallet authentication. Please use wallet login.',
-      400
-    );
-  }
-
-  // 3. Verify password
-  const isPasswordValid = await bcrypt.compare(password, merchant.passwordHash);
-  if (!isPasswordValid) {
-    throw new AppError('Invalid email or password.', 401);
-  }
-
-  // 4. Generate session
-  const tokenPayload = {
-    id: merchant.id,
-    walletAddress: merchant.walletAddress,
-    email: merchant.email,
-    businessName: merchant.businessName,
-  };
-
-  const sessionToken = generateToken(tokenPayload);
-  const expiresAt = getSessionExpiry();
-
-  await prisma.session.create({
-    data: {
-      merchantId: merchant.id,
-      token: sessionToken,
-      expiresAt,
-    },
-  });
-
-  return {
-    sessionToken,
-    merchant: {
-      id: merchant.id,
-      walletAddress: merchant.walletAddress,
-      email: merchant.email,
-      businessName: merchant.businessName,
-      preferredTokenMint: merchant.preferredTokenMint || undefined,
-      preferredTokenSymbol: merchant.preferredTokenSymbol || undefined,
-      preferredTokenDecimals: merchant.preferredTokenDecimals || undefined,
-      hasSelectedToken: merchant.hasSelectedToken,
-      preferredTokenUpdatedAt: merchant.preferredTokenUpdatedAt?.toISOString(),
-    },
-  };
-}
 
 /**
  * Get current merchant info
@@ -348,9 +280,9 @@ export async function updateProfile(
     throw new AppError('Merchant not found.', 404);
   }
 
-  // If email is changing, check uniqueness
+  // If email is changing, check uniqueness using findFirst since it's not strictly unique
   if (data.email && data.email !== merchant.email) {
-    const existing = await prisma.merchant.findUnique({ where: { email: data.email } });
+    const existing = await prisma.merchant.findFirst({ where: { email: data.email } });
     if (existing) {
       throw new AppError('Email already in use by another merchant.', 409);
     }
