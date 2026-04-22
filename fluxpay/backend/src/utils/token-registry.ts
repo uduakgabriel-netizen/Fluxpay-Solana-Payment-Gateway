@@ -86,25 +86,56 @@ export const TOKEN_REGISTRY: Record<string, TokenInfo> = {
   },
 };
 
+// ─── Dynamic Token Cache ────────────────────────────────────
+// In-memory cache for tokens loaded from the database at runtime.
+// This allows the system to work with ANY token, not just the 10 above.
+const dynamicTokenCache: Record<string, TokenInfo> = {};
+
 /**
- * Get token info by symbol (case-insensitive)
+ * Register a token dynamically (loaded from database).
+ * Used by the token service to extend the registry at runtime.
+ */
+export function registerToken(token: {
+  symbol: string;
+  name: string;
+  mintAddress: string;
+  decimals: number;
+}): void {
+  const info: TokenInfo = {
+    symbol: token.symbol.toUpperCase(),
+    name: token.name,
+    mintAddress: token.mintAddress,
+    decimals: token.decimals,
+    isNative: token.mintAddress === 'So11111111111111111111111111111111111111112',
+  };
+  dynamicTokenCache[info.symbol] = info;
+}
+
+/**
+ * Get token info by symbol (case-insensitive).
+ * Checks hardcoded registry first, then dynamic cache.
  */
 export function getTokenBySymbol(symbol: string): TokenInfo | null {
-  return TOKEN_REGISTRY[symbol.toUpperCase()] || null;
+  const upper = symbol.toUpperCase();
+  return TOKEN_REGISTRY[upper] || dynamicTokenCache[upper] || null;
 }
 
 /**
- * Get token info by mint address
+ * Get token info by mint address.
+ * Checks hardcoded registry first, then dynamic cache.
  */
 export function getTokenByMint(mintAddress: string): TokenInfo | null {
-  return Object.values(TOKEN_REGISTRY).find((t) => t.mintAddress === mintAddress) || null;
+  const fromRegistry = Object.values(TOKEN_REGISTRY).find((t) => t.mintAddress === mintAddress);
+  if (fromRegistry) return fromRegistry;
+  return Object.values(dynamicTokenCache).find((t) => t.mintAddress === mintAddress) || null;
 }
 
 /**
- * Check if a token symbol is supported
+ * Check if a token symbol is supported (in either registry or dynamic cache)
  */
 export function isSupportedToken(symbol: string): boolean {
-  return symbol.toUpperCase() in TOKEN_REGISTRY;
+  const upper = symbol.toUpperCase();
+  return upper in TOKEN_REGISTRY || upper in dynamicTokenCache;
 }
 
 /**
@@ -116,8 +147,9 @@ export function getMintAddress(symbol: string): string | null {
 }
 
 /**
- * Get all supported token symbols
+ * Get all supported token symbols (hardcoded + dynamic)
  */
 export function getAllTokenSymbols(): string[] {
-  return Object.keys(TOKEN_REGISTRY);
+  return [...new Set([...Object.keys(TOKEN_REGISTRY), ...Object.keys(dynamicTokenCache)])];
 }
+

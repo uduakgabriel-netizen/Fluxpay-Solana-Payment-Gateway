@@ -1,33 +1,17 @@
+import { logger } from '../utils/logger';
 import TokenService from '../services/token.service'
 
 let tokenRefreshJobId: NodeJS.Timeout | null = null
 
 /**
- * Start the token refresh job
- * Runs every 12 hours to update the token cache from Jupiter
+ * Start the token refresh job.
+ * Runs every 24 hours to update the FULL token cache from Jupiter.
+ * Fetches ALL verified tokens, not just the top 10.
  */
-export function startTokenRefreshJob() {
-  console.log('⚡ Starting token refresh job...')
-
-  // Run immediately on startup
-  TokenService.refreshTokenCache().catch((error) => {
-    console.error('Initial token refresh failed:', error)
-  })
-
-  // Then run every 12 hours (12 * 60 * 60 * 1000 milliseconds)
-  tokenRefreshJobId = setInterval(
-    () => {
-      console.log('Running scheduled token refresh...')
-      TokenService.refreshTokenCache().catch((error) => {
-        console.error('Scheduled token refresh failed:', error)
-      })
-    },
-    12 * 60 * 60 * 1000, // 12 hours
-  )
-
-  console.log('✓ Token refresh job started (runs every 12 hours)')
+export async function refreshTokens() {
+  logger.info('[TokenRefreshJob] Running scheduled token refresh');
+  await TokenService.refreshTokenCache();
 }
-
 /**
  * Stop the token refresh job (useful for cleanup)
  */
@@ -35,6 +19,6 @@ export function stopTokenRefreshJob() {
   if (tokenRefreshJobId) {
     clearInterval(tokenRefreshJobId)
     tokenRefreshJobId = null
-    console.log('Token refresh job stopped')
+    logger.info('Token refresh job stopped')
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { PrismaClient, SettlementStatus, Prisma } from '@prisma/client';
 import { AppError } from './auth.service';
 import { transferToMerchant } from '../utils/solana-transfer';
@@ -348,7 +349,7 @@ export async function processDailySettlement(): Promise<{
             failedAt: new Date(),
           },
         });
-        console.error(
+        logger.error(
           `[Settlement] Failed for merchant ${merchant.id}, token ${tokenKey}: ${error.message}`
         );
       }

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Request, Response, NextFunction } from 'express'
 import { PrismaClient } from '@prisma/client'
 
@@ -35,7 +36,7 @@ export async function requireTokenSelection(req: Request, res: Response, next: N
 
     next()
   } catch (error) {
-    console.error('Error in requireTokenSelection middleware:', error)
+    logger.error('Error in requireTokenSelection middleware:', error)
     res.status(500).json({ error: 'Internal server error' })
   }
 }

@@ -166,8 +166,7 @@ model Payment {
   metadata         Json?
   status           PaymentStatus  @default(PENDING)
   txHash           String?
-  receivingAddress String
-  privateKey       String
+  merchantWallet   String?
   confirmedAt      DateTime?
   swapRequired     Boolean        @default(false)
   swappedFrom      String?
@@ -184,15 +183,16 @@ model Payment {
   lastSwapError    String?
   lastSwapRetryAt  DateTime?
   swapRetries      Int            @default(0)
+  adminAlertSent   Boolean        @default(false)
   statusHistory    PaymentEvent[]
   merchant         Merchant       @relation(fields: [merchantId], references: [id])
   refunds          Refund[]
 
   @@index([merchantId])
   @@index([status])
-  @@index([receivingAddress])
   @@index([createdAt])
   @@index([settled])
+  @@index([merchantWallet])
   @@map("payments")
 }
 

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../types/auth.types';
 import * as authService from '../services/auth.service';
@@ -116,6 +117,6 @@ function handleError(error: unknown, res: Response): void {
     res.status(error.statusCode).json({ error: error.message });
     return;
   }
-  console.error('Controller error:', error);
+  logger.error('Controller error:', error);
   res.status(500).json({ error: 'Internal server error' });
 }

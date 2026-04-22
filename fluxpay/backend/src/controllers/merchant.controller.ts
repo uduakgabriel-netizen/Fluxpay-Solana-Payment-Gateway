@@ -1,7 +1,9 @@
+import { logger } from '../utils/logger';
 import { Request, Response } from 'express';
 import { AuthRequest } from '../types/auth.types';
 import { PrismaClient } from '@prisma/client';
 import { getTokenBySymbol } from '../utils/token-registry';
+import { getWalletBalance } from '../services/solana-wallet.service';
 
 const prisma = new PrismaClient();
 
@@ -52,7 +54,7 @@ export async function getMerchantInfo(req: AuthRequest, res: Response): Promise<
       preferredTokenUpdatedAt: merchant.preferredTokenUpdatedAt?.toISOString(),
     });
   } catch (error) {
-    console.error('Error fetching merchant info:', error);
+    logger.error('Error fetching merchant info:', error);
     res.status(500).json({ error: 'Failed to fetch merchant info' });
   }
 }
@@ -122,7 +124,43 @@ export async function updatePreferredToken(req: AuthRequest, res: Response): Pro
       },
     });
   } catch (error) {
-    console.error('Error updating preferred token:', error);
+    logger.error('Error updating preferred token:', error);
     res.status(500).json({ error: 'Failed to update preferred token' });
+  }
+}
+
+/**
+ * GET /api/merchants/balance
+ * Check merchant wallet SOL balance
+ */
+export async function getMerchantBalance(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.merchant) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: req.merchant.id },
+      select: { walletAddress: true },
+    });
+
+    if (!merchant) {
+      res.status(404).json({ error: 'Merchant not found' });
+      return;
+    }
+
+    const balance = await getWalletBalance(merchant.walletAddress);
+
+    res.status(200).json({
+      walletAddress: merchant.walletAddress,
+      sol: balance.sol,
+      tokens: balance.tokens,
+      canReceiveNewTokens: balance.sol >= 0.005,
+      minSolRequired: 0.005,
+    });
+  } catch (error) {
+    logger.error('Error fetching merchant balance:', error);
+    res.status(500).json({ error: 'Failed to fetch merchant balance' });
   }
 }

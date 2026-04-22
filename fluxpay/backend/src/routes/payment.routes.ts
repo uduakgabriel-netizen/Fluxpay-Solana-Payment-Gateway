@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import * as paymentController from '../controllers/payment.controller';
 import { requireApiKey, requireAuthOrApiKey } from '../middleware/apikey.middleware';
+import { idempotencyMiddleware } from '../middleware/idempotency';
 
 const router = Router();
 
@@ -46,6 +47,7 @@ const exportLimiter = rateLimit({
 router.post(
   '/',
   requireAuthOrApiKey as any,
+  idempotencyMiddleware as any,
   createPaymentLimiter,
   paymentController.createPayment as any
 );
@@ -80,6 +82,15 @@ router.get(
   requireAuthOrApiKey as any,
   listPaymentLimiter,
   paymentController.getPaymentStatus as any
+);
+
+/** POST /api/payments/:id/retry - Retry a failed payment swap */
+router.post(
+  '/:id/retry',
+  requireAuthOrApiKey as any,
+  idempotencyMiddleware as any,
+  createPaymentLimiter,
+  paymentController.retryPayment as any
 );
 
 /** GET /api/payments/:id - Get full payment details */

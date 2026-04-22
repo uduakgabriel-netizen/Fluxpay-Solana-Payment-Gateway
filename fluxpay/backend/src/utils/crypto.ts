@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import nacl from 'tweetnacl';
 import { randomBytes } from 'crypto';
 
@@ -23,7 +24,7 @@ export function verifyWalletSignature(
 
     return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
   } catch (error) {
-    console.error('Signature verification error:', error);
+    logger.error('Signature verification error:', error);
     return false;
   }
 }

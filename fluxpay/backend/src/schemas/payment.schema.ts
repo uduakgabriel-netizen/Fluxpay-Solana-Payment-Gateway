@@ -1,8 +1,14 @@
 import { z } from 'zod';
-import { SUPPORTED_TOKENS } from '../utils/solana';
 
 const walletAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+/**
+ * Payment creation schema — Non-custodial.
+ *
+ * Token validation is no longer restricted to a hardcoded list.
+ * Any Jupiter-supported token is accepted. Validation happens
+ * at the service layer via the dynamic token registry.
+ */
 export const createPaymentSchema = z.object({
   amount: z
     .number()
@@ -10,10 +16,9 @@ export const createPaymentSchema = z.object({
     .max(1_000_000, 'Amount cannot exceed 1,000,000'),
   token: z
     .string()
-    .refine(
-      (val) => SUPPORTED_TOKENS.includes(val.toUpperCase() as any),
-      `Token must be one of: ${SUPPORTED_TOKENS.join(', ')}`
-    ),
+    .min(1, 'Token is required')
+    .max(20, 'Token symbol too long')
+    .transform((val) => val.toUpperCase()),
   customerEmail: z.string().email('Invalid email').optional().or(z.literal('')),
   customerWallet: z
     .string()
@@ -27,7 +32,7 @@ export const listPaymentsSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: z
-    .enum(['PENDING', 'CONFIRMED', 'SWAPPED', 'COMPLETED', 'FAILED', 'EXPIRED'])
+    .enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'FAILED', 'EXPIRED'])
     .optional(),
   token: z.string().optional(),
   fromDate: z.string().datetime({ offset: true }).optional().or(z.string().optional()),
@@ -39,7 +44,7 @@ export const exportPaymentsSchema = z.object({
   fromDate: z.string().optional(),
   toDate: z.string().optional(),
   status: z
-    .enum(['PENDING', 'CONFIRMED', 'SWAPPED', 'COMPLETED', 'FAILED', 'EXPIRED'])
+    .enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'FAILED', 'EXPIRED'])
     .optional(),
   token: z.string().optional(),
 });

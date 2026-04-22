@@ -303,7 +303,6 @@ export async function processRefund(refundId: string, merchantId: string) {
         select: {
           customerWallet: true,
           token: true,
-          receivingAddress: true,
         },
       },
     },
@@ -336,7 +335,9 @@ export async function processRefund(refundId: string, merchantId: string) {
   });
 
   try {
-    // Execute on-chain refund
+    // Execute real on-chain refund from FluxPay hot wallet
+    // In non-custodial mode, customer funds went directly to merchant
+    // so refunds come from FluxPay's own funds
     const txHash = await processRefundOnChain(
       customerWallet,
       refund.amount,

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Response } from 'express';
 import { AuthRequest } from '../types/auth.types';
 import { AppError } from '../services/auth.service';
@@ -7,7 +8,7 @@ import { PaymentStatus } from '@prisma/client';
 
 /**
  * POST /api/payments
- * Create a new payment session
+ * Create a new payment session (non-custodial)
  */
 export async function createPayment(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -175,6 +176,30 @@ export async function getPaymentStatus(req: AuthRequest, res: Response): Promise
 }
 
 /**
+ * POST /api/payments/:id/retry
+ * Retry a failed payment swap
+ */
+export async function retryPayment(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.merchant) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: 'Payment ID is required' });
+      return;
+    }
+
+    const result = await paymentService.retryPayment(id, req.merchant.id);
+    res.status(200).json(result);
+  } catch (error) {
+    handleError(error, res);
+  }
+}
+
+/**
  * GET /api/payments/stats
  * Get dashboard overview stats (revenue, transactions, token distribution, etc.)
  */
@@ -200,6 +225,6 @@ function handleError(error: unknown, res: Response): void {
     res.status(error.statusCode).json({ error: error.message });
     return;
   }
-  console.error('Payment controller error:', error);
+  logger.error('Payment controller error:', error);
   res.status(500).json({ error: 'Internal server error' });
 }

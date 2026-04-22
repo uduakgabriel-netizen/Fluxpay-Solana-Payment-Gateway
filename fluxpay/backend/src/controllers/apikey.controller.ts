@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Response } from 'express';
 import { AuthRequest } from '../types/auth.types';
 import { AppError } from '../services/auth.service';
@@ -115,6 +116,6 @@ function handleError(error: unknown, res: Response): void {
     res.status(error.statusCode).json({ error: error.message });
     return;
   }
-  console.error('API Key controller error:', error);
+  logger.error('API Key controller error:', error);
   res.status(500).json({ error: 'Internal server error' });
 }

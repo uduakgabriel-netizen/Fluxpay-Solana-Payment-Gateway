@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Response } from 'express';
 import { AuthRequest } from '../types/auth.types';
 import * as subscriptionService from '../services/subscription.service';
@@ -8,7 +9,7 @@ function handleError(error: unknown, res: Response): void {
     res.status(error.statusCode).json({ error: error.message });
     return;
   }
-  console.error('Subscription controller error:', error);
+  logger.error('Subscription controller error:', error);
   res.status(500).json({ error: 'Internal server error' });
 }
 

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { PrismaClient } from '@prisma/client';
 import { expirePendingPayments } from '../services/payment.service';
 import { deliverWebhook } from '../utils/webhook';
@@ -32,7 +33,7 @@ export async function runExpirePayments(): Promise<void> {
     const count = await expirePendingPayments();
 
     if (count > 0) {
-      console.log(`[Cron] Expired ${count} pending payment(s)`);
+      logger.info(`[Cron] Expired ${count} pending payment(s)`);
 
       // Send webhooks for expired payments
       for (const payment of aboutToExpire) {
@@ -46,12 +47,12 @@ export async function runExpirePayments(): Promise<void> {
             expiredAt: new Date().toISOString(),
           },
         }).catch((err) =>
-          console.error(`[Cron] Failed to send expiry webhook for ${payment.id}:`, err)
+          logger.error(`[Cron] Failed to send expiry webhook for ${payment.id}:`, err)
         );
       }
     }
   } catch (error) {
-    console.error('[Cron] Error expiring payments:', error);
+    logger.error('[Cron] Error expiring payments:', error);
   }
 }
 
@@ -59,12 +60,3 @@ export async function runExpirePayments(): Promise<void> {
  * Start the recurring expiration job using setInterval
  * This avoids an external dependency on node-cron
  */
-export function startExpirePaymentsJob(): void {
-  console.log('[Cron] Expire payments job started (runs every hour)');
-
-  // Run once on startup to catch any already-expired payments
-  runExpirePayments();
-
-  // Then run every hour
-  setInterval(runExpirePayments, INTERVAL_MS);
-}

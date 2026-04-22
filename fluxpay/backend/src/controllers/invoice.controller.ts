@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Response } from 'express';
 import { AuthRequest } from '../types/auth.types';
 import * as invoiceService from '../services/invoice.service';
@@ -8,7 +9,7 @@ function handleError(error: unknown, res: Response): void {
     res.status(error.statusCode).json({ error: error.message });
     return;
   }
-  console.error('Invoice controller error:', error);
+  logger.error('Invoice controller error:', error);
   res.status(500).json({ error: 'Internal server error' });
 }
 

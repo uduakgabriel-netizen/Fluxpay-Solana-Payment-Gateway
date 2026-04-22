@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 /**
  * Helius Webhook Controller
  *
@@ -20,7 +21,7 @@ export async function handleHeliusWebhook(req: Request, res: Response): Promise<
     const authHeader = req.headers.authorization || (req.headers['x-helius-api-key'] as string);
 
     if (!verifyHeliusAuth(authHeader)) {
-      console.warn('[Helius] Unauthorized webhook request');
+      logger.warn('[Helius] Unauthorized webhook request');
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -36,7 +37,7 @@ export async function handleHeliusWebhook(req: Request, res: Response): Promise<
     // Ensure payload is an array
     const transactions = Array.isArray(payload) ? payload : [payload];
 
-    console.log(`[Helius] Received webhook with ${transactions.length} transaction(s)`);
+    logger.info(`[Helius] Received webhook with ${transactions.length} transaction(s)`);
 
     // Process asynchronously — return 200 immediately so Helius doesn't retry
     // We process in the background
@@ -49,7 +50,7 @@ export async function handleHeliusWebhook(req: Request, res: Response): Promise<
       errors: results.errors.length,
     });
   } catch (error: any) {
-    console.error('[Helius] Webhook handler error:', error);
+    logger.error('[Helius] Webhook handler error:', error);
     // Still return 200 to prevent Helius retries on our errors
     res.status(200).json({
       success: false,

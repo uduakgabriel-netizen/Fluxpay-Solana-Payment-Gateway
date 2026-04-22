@@ -1,7 +1,9 @@
+import { logger } from '../utils/logger';
 import { Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { createHash } from 'crypto';
 import { AuthRequest } from '../types/auth.types';
+import { cacheService } from '../services/cache.service';
 
 const prisma = new PrismaClient();
 
@@ -28,11 +30,20 @@ export const requireApiKey = async (
     // Hash the API key to compare with stored hash
     const keyHash = createHash('sha256').update(apiKey).digest('hex');
 
-    // Find the API key in the database
-    const apiKeyRecord = await prisma.apiKey.findUnique({
-      where: { keyHash },
-      include: { merchant: true },
-    });
+    const cacheKey = `apikey:${keyHash}`;
+    let apiKeyRecord: any = await cacheService.get(cacheKey);
+
+    if (!apiKeyRecord) {
+      // Find the API key in the database
+      apiKeyRecord = await prisma.apiKey.findUnique({
+        where: { keyHash },
+        include: { merchant: true },
+      });
+
+      if (apiKeyRecord && !apiKeyRecord.revoked) {
+        await cacheService.set(cacheKey, apiKeyRecord, 60 * 60); // 1 hour TTL
+      }
+    }
 
     if (!apiKeyRecord) {
       res.status(401).json({ error: 'Invalid API key' });
@@ -71,7 +82,7 @@ export const requireApiKey = async (
 
     next();
   } catch (error) {
-    console.error('API Key middleware error:', error);
+    logger.error('API Key middleware error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

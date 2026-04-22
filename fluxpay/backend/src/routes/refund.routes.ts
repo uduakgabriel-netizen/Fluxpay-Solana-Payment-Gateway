@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import * as refundController from '../controllers/refund.controller';
 import { requireAuthOrApiKey } from '../middleware/apikey.middleware';
+import { idempotencyMiddleware } from '../middleware/idempotency';
 
 const router = Router();
 
@@ -33,6 +34,7 @@ const refundReadLimiter = rateLimit({
 router.post(
   '/',
   requireAuthOrApiKey as any,
+  idempotencyMiddleware as any,
   refundWriteLimiter,
   refundController.createRefund as any
 );
@@ -73,6 +75,7 @@ router.put(
 router.post(
   '/:id/process',
   requireAuthOrApiKey as any,
+  idempotencyMiddleware as any,
   refundWriteLimiter,
   refundController.processRefund as any
 );

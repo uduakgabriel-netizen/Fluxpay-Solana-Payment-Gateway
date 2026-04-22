@@ -16,11 +16,15 @@ import teamRoutes from './routes/team.routes';
 import tokenRoutes from './routes/token.routes';
 import merchantRoutes from './routes/merchant.routes';
 import { errorHandler } from './middleware/errorHandler';
+import { requestIdMiddleware } from './middleware/requestId';
 
 const app = express();
 
 // ─── Security Headers ──────────────────────────────────────
 app.use(helmet());
+
+// ─── Request Tracing ───────────────────────────────────────
+app.use(requestIdMiddleware);
 
 // ─── CORS ───────────────────────────────────────────────────
 app.use(

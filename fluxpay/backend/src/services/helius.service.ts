@@ -1,23 +1,27 @@
+import { logger } from '../utils/logger';
 /**
- * Helius Webhook Service
+ * Helius Webhook Service — Non-Custodial
  *
  * Processes real-time Solana transaction data from Helius webhooks.
  *
- * Flow:
+ * Non-Custodial Flow:
  * 1. Receive webhook payload from Helius
  * 2. Parse transaction details (sender, receiver, token, amount)
- * 3. Match to payment session by receiving address
+ * 3. Match to payment by merchant wallet address
  * 4. Verify transaction on-chain
  * 5. Update payment status
- * 6. Trigger swap if needed
- * 7. Send merchant webhook
+ * 6. Send merchant webhook
+ * 7. Send merchant email notification
+ *
+ * Note: In non-custodial mode, we monitor the MERCHANT wallet
+ * for incoming transfers, not deposit wallets.
  */
 
 import { PrismaClient, PaymentStatus } from '@prisma/client';
 import { verifyTransaction } from './solana-wallet.service';
-import { processSwapIfNeeded } from './jupiter.service';
 import { deliverWebhook } from '../utils/webhook';
 import { getTokenByMint, TOKEN_REGISTRY } from '../utils/token-registry';
+import { EmailService } from './email.service';
 
 const prisma = new PrismaClient();
 
@@ -88,12 +92,12 @@ export async function processHeliusWebhook(
       results.matched++;
     } catch (error: any) {
       const msg = `Error processing tx ${tx.signature?.slice(0, 12)}...: ${error.message}`;
-      console.error(`[Helius] ${msg}`);
+      logger.error(`[Helius] ${msg}`);
       results.errors.push(msg);
     }
   }
 
-  console.log(
+  logger.info(
     `[Helius] Processed ${results.processed} transactions, matched ${results.matched}, errors: ${results.errors.length}`
   );
 
@@ -115,7 +119,7 @@ async function processTransaction(tx: HeliusEnhancedTransaction): Promise<void> 
   });
 
   if (existing) {
-    console.log(`[Helius] Duplicate tx ${signature.slice(0, 12)}... already processed, skipping`);
+    logger.info(`[Helius] Duplicate tx ${signature.slice(0, 12)}... already processed, skipping`);
     return;
   }
 
@@ -156,10 +160,10 @@ async function processTransaction(tx: HeliusEnhancedTransaction): Promise<void> 
   }
 
   // No matching payment found — this is normal for unrelated transactions
-  console.log(`[Helius] No matching payment for tx ${signature.slice(0, 12)}...`);
+  logger.info(`[Helius] No matching payment for tx ${signature.slice(0, 12)}...`);
 }
 
-// ─── Match Transfer to Payment ──────────────────────────────
+// ─── Match Transfer to Payment (Non-Custodial) ─────────────
 
 interface TransferData {
   signature: string;
@@ -172,10 +176,12 @@ interface TransferData {
 }
 
 async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean> {
-  // Find payment by receiving address
+  // In non-custodial mode, match by:
+  // 1. merchantWallet = transfer.receiver (funds go directly to merchant)
+  // 2. Status = PENDING (waiting for customer payment)
   const payment = await prisma.payment.findFirst({
     where: {
-      receivingAddress: transfer.receiver,
+      merchantWallet: transfer.receiver,
       status: 'PENDING',
     },
     include: {
@@ -185,7 +191,7 @@ async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean>
 
   if (!payment) return false;
 
-  console.log(
+  logger.info(
     `[Helius] Matched tx ${transfer.signature.slice(0, 12)}... to payment ${payment.id}`
   );
 
@@ -196,7 +202,7 @@ async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean>
   const amountDiff = Math.abs(receivedAmount - expectedAmount) / expectedAmount;
 
   if (amountDiff > amountTolerance) {
-    console.error(
+    logger.error(
       `[Helius] Amount mismatch for payment ${payment.id}: expected ${expectedAmount}, got ${receivedAmount}`
     );
 
@@ -207,13 +213,18 @@ async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean>
       txHash: transfer.signature,
     });
 
-    return true; // We matched the payment, even though it failed
-  }
+    // Email merchant about failure
+    if (payment.merchant?.email) {
+      EmailService.sendPaymentFailed(payment.merchant.email, {
+        paymentId: payment.id,
+        amount: expectedAmount,
+        token: payment.token,
+        reason: `Amount mismatch: expected ${expectedAmount}, received ${receivedAmount}`,
+      }).catch(logger.error);
+    }
 
-  // ─── Validate Token (if merchant specified one) ────────────
-  // The payment.token is what the merchant expects to receive
-  // The transfer.token is what the customer actually sent
-  // If they differ, we'll need a swap
+    return true;
+  }
 
   // ─── Update Payment to CONFIRMED ──────────────────────────
   await prisma.payment.update({
@@ -233,7 +244,7 @@ async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean>
     },
   });
 
-  console.log(`[Helius] Payment ${payment.id} status → CONFIRMED`);
+  logger.info(`[Helius] Payment ${payment.id} status → CONFIRMED`);
 
   // ─── Send merchant webhook: payment.confirmed ─────────────
   await deliverWebhook({
@@ -247,53 +258,70 @@ async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean>
       receivedAmount: transfer.amount,
       txHash: transfer.signature,
       customerWallet: transfer.sender,
+      merchantWallet: payment.merchantWallet,
       confirmedAt: new Date().toISOString(),
     },
   });
 
-  // ─── Check if swap is needed ──────────────────────────────
+  // ─── Check if same-token payment (no swap needed) ─────────
   const receivedToken = transfer.token.toUpperCase();
   const merchantToken = payment.token.toUpperCase();
 
-  await processSwapIfNeeded(
-    payment.id,
-    receivedToken,
-    receivedAmount,
-    merchantToken
-  );
-
-  // ─── Send final webhooks ──────────────────────────────────
-  // Reload the payment to get latest status
-  const updatedPayment = await prisma.payment.findUnique({
-    where: { id: payment.id },
-  });
-
-  if (updatedPayment?.status === 'SWAPPED' || updatedPayment?.swapRequired) {
-    await deliverWebhook({
-      merchantId: payment.merchantId,
-      event: 'payment.swapped',
+  if (receivedToken === merchantToken) {
+    // Direct payment — no swap needed, mark COMPLETED immediately
+    await prisma.payment.update({
+      where: { id: payment.id },
       data: {
-        paymentId: payment.id,
-        fromToken: updatedPayment.swappedFrom,
-        toToken: payment.token,
-        swappedAmount: updatedPayment.swappedAmount,
-        swapFee: updatedPayment.swapFee,
-        swapTxHash: updatedPayment.swapTxHash,
+        status: 'COMPLETED',
+        completedAt: new Date(),
       },
     });
-  }
 
-  if (updatedPayment?.status === 'COMPLETED') {
+    await prisma.paymentEvent.create({
+      data: {
+        paymentId: payment.id,
+        status: 'COMPLETED',
+      },
+    });
+
+    logger.info(`[Helius] Payment ${payment.id} completed (no swap needed)`);
+
+    // Send completed webhook
     await deliverWebhook({
       merchantId: payment.merchantId,
       event: 'payment.completed',
       data: {
         paymentId: payment.id,
-        amount: updatedPayment.swappedAmount || payment.amount,
+        amount: payment.amount,
         token: payment.token,
         txHash: transfer.signature,
-        swapTxHash: updatedPayment.swapTxHash,
-        completedAt: updatedPayment.completedAt?.toISOString(),
+        merchantWallet: payment.merchantWallet,
+        completedAt: new Date().toISOString(),
+      },
+    });
+
+    // Email merchant about success
+    if (payment.merchant?.email) {
+      EmailService.sendPaymentSuccess(payment.merchant.email, {
+        paymentId: payment.id,
+        amount: payment.amount,
+        token: payment.token,
+        txHash: transfer.signature,
+        merchantWallet: payment.merchantWallet || payment.merchant.walletAddress,
+        customerWallet: transfer.sender,
+      }).catch(logger.error);
+    }
+  } else {
+    // Different token — swap pending
+    // In non-custodial mode, the swap was already built into the Jupiter transaction
+    // The customer would have already approved the swap on the frontend
+    logger.info(`[Helius] Payment ${payment.id}: received ${receivedToken}, expected ${merchantToken}`);
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        swapRequired: true,
+        swappedFrom: receivedToken,
       },
     });
   }
@@ -342,7 +370,7 @@ export function verifyHeliusAuth(authHeader: string | undefined): boolean {
   if (!heliusApiKey) {
     // If no key configured, allow in development
     if (process.env.NODE_ENV === 'development') {
-      console.warn('[Helius] No HELIUS_API_KEY set — accepting all webhooks in dev mode');
+      logger.warn('[Helius] No HELIUS_API_KEY set — accepting all webhooks in dev mode');
       return true;
     }
     return false;

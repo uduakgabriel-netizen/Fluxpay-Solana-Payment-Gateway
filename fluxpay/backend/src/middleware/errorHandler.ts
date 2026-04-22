@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Request, Response, NextFunction } from 'express';
 
 /**
@@ -9,7 +10,7 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ): void => {
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled error:', err);
 
   // Prisma known errors
   if (err.constructor.name === 'PrismaClientKnownRequestError') {

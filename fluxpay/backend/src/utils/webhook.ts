@@ -1,19 +1,134 @@
+import { logger } from '../utils/logger';
 /**
- * Webhook Delivery Utility
+ * Webhook Delivery Utility — PRODUCTION
  *
- * Handles delivering webhooks to merchant endpoints, including:
+ * Handles delivering webhooks to merchant endpoints with:
  * - HMAC-SHA256 signature generation (X-FluxPay-Signature)
- * - Exponential backoff retry logic
- * - Delivery logging
+ * - Persistent retry queue via BullMQ + Redis
+ * - Exponential backoff: 1min → 5min → 15min → 1hr → 6hr
+ * - Delivery logging to database
+ * - Survives server restarts (jobs persist in Redis)
+ *
+ * Falls back to in-memory retry if Redis is unavailable.
  */
 
 import { PrismaClient } from '@prisma/client';
 import { createHmac } from 'crypto';
+import { Queue, Worker, Job } from 'bullmq';
+import IORedis from 'ioredis';
+import { AlertService } from '../services/alert.service';
+import { cacheService } from '../services/cache.service';
 
 const prisma = new PrismaClient();
 
 const WEBHOOK_TIMEOUT_MS = parseInt(process.env.WEBHOOK_TIMEOUT_MS || '10000', 10);
 const MAX_RESPONSE_BODY_LENGTH = 500; // Truncate stored response bodies
+const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+
+// ─── Redis & BullMQ Setup ───────────────────────────────────
+
+let redisConnection: IORedis | null = null;
+let webhookQueue: Queue | null = null;
+let webhookWorker: Worker | null = null;
+let useRedis = false;
+
+/**
+ * Initialize the BullMQ webhook queue.
+ * Call this on server startup.
+ */
+export async function initWebhookQueue(): Promise<void> {
+  try {
+    redisConnection = new IORedis(REDIS_URL, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true,
+      retryStrategy: () => null, // Don't auto-retry — we handle fallback
+    });
+
+    // Attach error handler BEFORE connecting to prevent unhandled error events
+    redisConnection.on('error', (err) => {
+      // Silently handled — fallback to in-memory mode
+    });
+
+    await redisConnection.connect();
+    logger.info('[Webhook] Connected to Redis for persistent queue');
+
+    webhookQueue = new Queue('webhook-delivery', {
+      connection: redisConnection,
+      defaultJobOptions: {
+        // Retry backoff: 1min, 5min, 15min, 1hr, 6hr
+        attempts: 5,
+        backoff: {
+          type: 'custom',
+        },
+        removeOnComplete: { count: 1000 }, // Keep last 1000 completed
+        removeOnFail: { count: 5000 },     // Keep last 5000 failed
+      },
+    });
+
+    // Create the worker that processes webhook deliveries
+    const workerConnection = new IORedis(REDIS_URL, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true,
+      retryStrategy: () => null,
+    });
+
+    workerConnection.on('error', () => {});
+    await workerConnection.connect();
+
+    webhookWorker = new Worker(
+      'webhook-delivery',
+      async (job: Job) => {
+        await processWebhookJob(job);
+      },
+      {
+        connection: workerConnection,
+        concurrency: 5, // Process up to 5 webhooks concurrently
+        settings: {
+          backoffStrategy: (attemptsMade: number) => {
+            // Custom backoff: 1min, 5min, 15min, 1hr, 6hr
+            const delays = [60_000, 300_000, 900_000, 3_600_000, 21_600_000];
+            return delays[attemptsMade - 1] || 21_600_000;
+          },
+        },
+      }
+    );
+
+    webhookWorker.on('completed', (job) => {
+      logger.info(`[Webhook] Job ${job.id} completed`);
+    });
+
+    webhookWorker.on('failed', (job, err) => {
+      logger.error(`[Webhook] Job ${job?.id} failed (attempt ${job?.attemptsMade}):`, err.message);
+    });
+
+    useRedis = true;
+    logger.info('[Webhook] BullMQ queue and worker initialized');
+  } catch (error: any) {
+    logger.warn(`[Webhook] Redis unavailable (${error.message}). Using in-memory fallback.`);
+    useRedis = false;
+  }
+}
+
+/**
+ * Gracefully shutdown the webhook queue.
+ * Call this on server shutdown.
+ */
+export async function shutdownWebhookQueue(): Promise<void> {
+  if (webhookWorker) {
+    await webhookWorker.close();
+    logger.info('[Webhook] Worker shut down');
+  }
+  if (webhookQueue) {
+    await webhookQueue.close();
+    logger.info('[Webhook] Queue shut down');
+  }
+  if (redisConnection) {
+    redisConnection.disconnect();
+    logger.info('[Webhook] Redis disconnected');
+  }
+}
 
 // ─── Signature Generation ───────────────────────────────────
 
@@ -42,20 +157,27 @@ interface DeliverWebhookInput {
 
 /**
  * Deliver a webhook event to all matching merchant configs.
- * Creates log entries and schedules retries for failures.
- * This is fire-and-forget — errors are logged, not thrown.
+ * Creates log entries and enqueues in BullMQ for persistent delivery.
+ * Falls back to in-memory delivery if Redis is unavailable.
  */
 export async function deliverWebhook(input: DeliverWebhookInput): Promise<void> {
   const { merchantId, event, data } = input;
 
   try {
-    // Find active webhook configs for this merchant that subscribe to this event
-    const configs = await prisma.webhookConfig.findMany({
-      where: {
-        merchantId,
-        active: true,
-      },
-    });
+    // Check cache first
+    const cacheKey = `webhookConfig:${merchantId}`;
+    let configs: any = await cacheService.get(cacheKey);
+
+    if (!configs) {
+      // Find active webhook configs for this merchant that subscribe to this event
+      configs = await prisma.webhookConfig.findMany({
+        where: {
+          merchantId,
+          active: true,
+        },
+      });
+      await cacheService.set(cacheKey, configs, 5 * 60); // 5 minutes TTL
+    }
 
     for (const config of configs) {
       const subscribedEvents = config.events as string[];
@@ -88,19 +210,147 @@ export async function deliverWebhook(input: DeliverWebhookInput): Promise<void> 
         },
       });
 
-      // Attempt delivery (async, don't block)
-      attemptDelivery(log.id, config.url, payloadStr, signature, 1, config.maxRetries, config.retryBackoff)
-        .catch((err) => console.error(`[Webhook] Delivery error for log ${log.id}:`, err));
+      if (useRedis && webhookQueue) {
+        // Enqueue in BullMQ for persistent delivery
+        await webhookQueue.add(
+          'deliver',
+          {
+            logId: log.id,
+            url: config.url,
+            payloadStr,
+            signature,
+            event,
+            maxAttempts: config.maxRetries,
+          },
+          {
+            jobId: `webhook_${log.id}`,
+            attempts: config.maxRetries,
+          }
+        );
+      } else {
+        // Fallback: in-memory delivery with retry
+        attemptDeliveryInMemory(log.id, config.url, payloadStr, signature, 1, config.maxRetries, config.retryBackoff)
+          .catch((err) => logger.error(`[Webhook] Delivery error for log ${log.id}:`, err));
+      }
     }
   } catch (error) {
-    console.error(`[Webhook] Error delivering ${event} for merchant ${merchantId}:`, error);
+    logger.error(`[Webhook] Error delivering ${event} for merchant ${merchantId}:`, error);
   }
 }
 
+// ─── BullMQ Job Processor ───────────────────────────────────
+
 /**
- * Attempt to deliver a webhook, with retry on failure
+ * Process a webhook delivery job from BullMQ.
+ * Throws on failure to trigger BullMQ's built-in retry.
  */
-async function attemptDelivery(
+async function processWebhookJob(job: Job): Promise<void> {
+  const { logId, url, payloadStr, signature, event } = job.data;
+  const attempt = job.attemptsMade + 1;
+
+  const startTime = Date.now();
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-FluxPay-Signature': signature,
+        'X-FluxPay-Event': event,
+        'User-Agent': 'FluxPay-Webhook/1.0',
+      },
+      body: payloadStr,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    const duration = Date.now() - startTime;
+    let responseBody = '';
+
+    try {
+      responseBody = await response.text();
+      if (responseBody.length > MAX_RESPONSE_BODY_LENGTH) {
+        responseBody = responseBody.slice(0, MAX_RESPONSE_BODY_LENGTH) + '... (truncated)';
+      }
+    } catch {
+      responseBody = '(unable to read response body)';
+    }
+
+    if (response.ok) {
+      // Success — update log
+      await prisma.webhookLog.update({
+        where: { id: logId },
+        data: {
+          status: 'SUCCESS',
+          statusCode: response.status,
+          responseBody,
+          duration,
+          attempt,
+        },
+      });
+      return; // Job complete
+    }
+
+    // Non-2xx — update log and throw to trigger retry
+    await prisma.webhookLog.update({
+      where: { id: logId },
+      data: {
+        status: 'RETRYING',
+        statusCode: response.status,
+        responseBody,
+        duration,
+        attempt,
+        error: `HTTP ${response.status}: ${response.statusText}`,
+      },
+    });
+
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    const errorMessage = error.name === 'AbortError'
+      ? `Timeout after ${WEBHOOK_TIMEOUT_MS}ms`
+      : error.message || 'Unknown error';
+
+    // Check if this is the last attempt
+    const maxAttempts = job.opts.attempts || 5;
+    const isFinal = attempt >= maxAttempts;
+
+    await prisma.webhookLog.update({
+      where: { id: logId },
+      data: {
+        status: isFinal ? 'FAILED' : 'RETRYING',
+        duration,
+        attempt,
+        error: errorMessage,
+      },
+    });
+
+    if (isFinal) {
+      logger.error(`[Webhook] Delivery permanently failed after ${attempt} attempts for log ${logId}`);
+      
+      const log = await prisma.webhookLog.findUnique({ where: { id: logId } });
+      if (log) {
+        AlertService.alertWebhookFailure(log.merchantId, log.event, log.url, attempt).catch(logger.error);
+      }
+      
+      return; // Don't throw — BullMQ will mark it as completed
+    }
+
+    // Throw to trigger BullMQ retry with backoff
+    throw new Error(errorMessage);
+  }
+}
+
+// ─── In-Memory Fallback ─────────────────────────────────────
+
+/**
+ * Attempt to deliver a webhook with in-memory retry (fallback when Redis is unavailable).
+ */
+async function attemptDeliveryInMemory(
   logId: string,
   url: string,
   payloadStr: string,
@@ -155,7 +405,7 @@ async function attemptDelivery(
       });
     } else {
       // Non-2xx response — retry
-      await handleRetry(logId, url, payloadStr, signature, attempt, maxAttempts, retryBackoffMs, {
+      await handleInMemoryRetry(logId, url, payloadStr, signature, attempt, maxAttempts, retryBackoffMs, {
         statusCode: response.status,
         responseBody,
         duration,
@@ -168,7 +418,7 @@ async function attemptDelivery(
       ? `Timeout after ${WEBHOOK_TIMEOUT_MS}ms`
       : error.message || 'Unknown error';
 
-    await handleRetry(logId, url, payloadStr, signature, attempt, maxAttempts, retryBackoffMs, {
+    await handleInMemoryRetry(logId, url, payloadStr, signature, attempt, maxAttempts, retryBackoffMs, {
       statusCode: null,
       responseBody: null,
       duration,
@@ -178,9 +428,9 @@ async function attemptDelivery(
 }
 
 /**
- * Handle retry logic with exponential backoff
+ * Handle retry logic with exponential backoff (in-memory fallback)
  */
-async function handleRetry(
+async function handleInMemoryRetry(
   logId: string,
   url: string,
   payloadStr: string,
@@ -208,7 +458,13 @@ async function handleRetry(
         error: result.error,
       },
     });
-    console.log(`[Webhook] Delivery failed after ${attempt} attempts for log ${logId}`);
+    logger.info(`[Webhook] Delivery failed after ${attempt} attempts for log ${logId}`);
+    
+    const log = await prisma.webhookLog.findUnique({ where: { id: logId } });
+    if (log) {
+      AlertService.alertWebhookFailure(log.merchantId, log.event, log.url, attempt).catch(logger.error);
+    }
+    
     return;
   }
 
@@ -230,14 +486,14 @@ async function handleRetry(
     },
   });
 
-  console.log(
+  logger.info(
     `[Webhook] Retry ${attempt + 1}/${maxAttempts} for log ${logId} in ${backoffMs}ms`
   );
 
   // Schedule retry
   setTimeout(() => {
-    attemptDelivery(logId, url, payloadStr, signature, attempt + 1, maxAttempts, retryBackoffMs)
-      .catch((err) => console.error(`[Webhook] Retry error for log ${logId}:`, err));
+    attemptDeliveryInMemory(logId, url, payloadStr, signature, attempt + 1, maxAttempts, retryBackoffMs)
+      .catch((err) => logger.error(`[Webhook] Retry error for log ${logId}:`, err));
   }, backoffMs);
 }
 

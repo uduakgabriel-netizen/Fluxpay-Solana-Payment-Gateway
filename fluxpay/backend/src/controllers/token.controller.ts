@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import TokenService from '../services/token.service'
@@ -13,7 +14,7 @@ export async function getSupportedTokens(req: Request, res: Response) {
     const tokens = await TokenService.getSupportedTokens()
     res.json({ data: tokens })
   } catch (error) {
-    console.error('Error getting supported tokens:', error)
+    logger.error('Error getting supported tokens:', error)
     res.status(500).json({ error: 'Failed to fetch supported tokens' })
   }
 }
@@ -82,14 +83,14 @@ export async function getSwapQuote(req: Request, res: Response) {
         },
       })
     } catch (error: any) {
-      console.error('Error getting swap quote:', error)
+      logger.error('Error getting swap quote:', error)
       res.status(500).json({
         error: 'Failed to fetch swap quote',
         message: error?.message,
       })
     }
   } catch (error: any) {
-    console.error('Error getting swap quote:', error)
+    logger.error('Error getting swap quote:', error)
     res.status(500).json({
       error: 'Failed to fetch swap quote',
       message: error?.message,
@@ -142,7 +143,7 @@ export async function getMerchantPreferredToken(req: Request, res: Response) {
       },
     })
   } catch (error) {
-    console.error('Error getting merchant preferred token:', error)
+    logger.error('Error getting merchant preferred token:', error)
     res.status(500).json({ error: 'Failed to fetch merchant preferred token' })
   }
 }
@@ -205,7 +206,7 @@ export async function updateMerchantPreferredToken(req: Request, res: Response) 
       message: `Preferred token updated to ${updatedMerchant.preferredTokenSymbol}`,
     })
   } catch (error) {
-    console.error('Error updating merchant preferred token:', error)
+    logger.error('Error updating merchant preferred token:', error)
     res.status(500).json({ error: 'Failed to update preferred token' })
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 /**
  * Blockchain Controller
  *
@@ -46,7 +47,7 @@ export async function getBalance(req: AuthRequest, res: Response): Promise<void>
     const balance = await getWalletBalance(address);
     res.status(200).json(balance);
   } catch (error: any) {
-    console.error('[Blockchain] Balance check error:', error);
+    logger.error('[Blockchain] Balance check error:', error);
     res.status(500).json({ error: 'Failed to check wallet balance' });
   }
 }
@@ -73,7 +74,7 @@ export async function getTransaction(req: AuthRequest, res: Response): Promise<v
 
     res.status(200).json(tx);
   } catch (error: any) {
-    console.error('[Blockchain] Transaction verification error:', error);
+    logger.error('[Blockchain] Transaction verification error:', error);
     res.status(500).json({ error: 'Failed to verify transaction' });
   }
 }
@@ -128,7 +129,7 @@ export async function getQuote(req: AuthRequest, res: Response): Promise<void> {
       estimatedFee: quote.estimatedFeeInSol,
     });
   } catch (error: any) {
-    console.error('[Blockchain] Swap quote error:', error);
+    logger.error('[Blockchain] Swap quote error:', error);
     res.status(500).json({ error: 'Failed to get swap quote' });
   }
 }

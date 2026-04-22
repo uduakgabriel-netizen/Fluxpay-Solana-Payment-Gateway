@@ -36,8 +36,8 @@ const themeMap: Record<string, { bg: string; iconBg: string; iconColor: string; 
   },
 }
 
-function formatCurrency(amount: number): string {
-  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+function formatCurrency(amount: number = 0): string {
+  return `$${(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
 export default function StatsCards() {
@@ -53,28 +53,28 @@ export default function StatsCards() {
     {
       label: 'Total Revenue',
       value: stats ? formatCurrency(stats.totalRevenue) : '$0',
-      change: stats && stats.completedTransactions > 0 ? `${stats.completedTransactions} completed` : '—',
+      change: stats && (stats.completedTransactions || 0) > 0 ? `${stats.completedTransactions} completed` : '—',
       trend: 'up' as const,
       icon: 'DollarSign',
     },
     {
       label: 'Transactions',
-      value: stats ? stats.totalTransactions.toLocaleString() : '0',
-      change: stats && stats.completedTransactions > 0 ? `${stats.completedTransactions} completed` : '—',
+      value: stats ? (stats.totalTransactions || 0).toLocaleString() : '0',
+      change: stats && (stats.completedTransactions || 0) > 0 ? `${stats.completedTransactions} completed` : '—',
       trend: 'up' as const,
       icon: 'ArrowUpDown',
     },
     {
       label: 'Pending Settlements',
-      value: stats ? formatCurrency(stats.pendingSettlementAmount) : '$0',
-      change: stats && stats.pendingSettlementCount > 0 ? `${stats.pendingSettlementCount} pending` : '—',
+      value: stats ? formatCurrency((stats as any).pendingSettlementAmount || 0) : '$0',
+      change: stats && ((stats as any).pendingSettlementCount || 0) > 0 ? `${(stats as any).pendingSettlementCount} pending` : '—',
       trend: 'down' as const,
       icon: 'Clock',
     },
     {
       label: 'Success Rate',
-      value: stats ? `${stats.successRate}%` : '100%',
-      change: stats && stats.totalTransactions > 0 ? `${stats.totalTransactions} total` : '—',
+      value: stats ? `${stats.successRate || 0}%` : '100%',
+      change: stats && (stats.totalTransactions || 0) > 0 ? `${stats.totalTransactions} total` : '—',
       trend: 'up' as const,
       icon: 'CheckCircle',
     },

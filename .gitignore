@@ -8,26 +8,29 @@ node_modules/
 build/
 dist/
 
-# ─── Environment files (CRITICAL: DO NOT COMMIT SECRETS) ───
-.env
-.env.*
-!.env.example
+# ─── Environment files (dotenvx) ───
+# We use dotenvx for encryption, so it is safer to commit encrypted .env files
+# NEVER COMMIT .env.keys!
+.env.keys
 
-# ─── Logs ───
+# ─── Logs & Temp Files ───
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+test_output*.txt
+.antigravityignore
 
 # ─── Prisma Database (SQLite local data if applicable) ───
 *.db
 *.db-journal
 
-# ─── OS files ───
+# ─── OS files & Testing ───
 .DS_Store
 Thumbs.db
 desktop.ini
+coverage/
 
 # ─── TypeScript cache ───
 *.tsbuildinfo

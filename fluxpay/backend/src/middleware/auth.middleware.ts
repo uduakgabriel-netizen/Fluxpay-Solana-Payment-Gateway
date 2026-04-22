@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { verifyToken } from '../utils/jwt';
@@ -59,7 +60,7 @@ export const requireAuth = async (
 
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    logger.error('Auth middleware error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

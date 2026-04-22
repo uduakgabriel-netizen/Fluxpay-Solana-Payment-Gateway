@@ -1,7 +1,7 @@
+import { logger } from '../utils/logger';
 import { PrismaClient, PaymentStatus, Prisma } from '@prisma/client';
-import { generateReceivingWallet } from './solana-wallet.service';
 import { AppError } from './auth.service';
-import { getSwapQuote } from './jupiter.service';
+import { getNonCustodialQuote } from './nonCustodialSwap.service';
 
 const prisma = new PrismaClient();
 const PAYMENT_EXPIRY_HOURS = 24;
@@ -39,10 +39,10 @@ async function getAndStoreSwapQuote(
   amount: number
 ) {
   try {
-    const quote = await getSwapQuote(fromToken, toToken, amount);
+    const quote = await getNonCustodialQuote(fromToken, toToken, amount);
     
     if (!quote) {
-      console.error(`[Payment] Failed to get swap quote for payment ${paymentId}`);
+      logger.error(`[Payment] Failed to get swap quote for payment ${paymentId}`);
       return null;
     }
 
@@ -68,7 +68,7 @@ async function getAndStoreSwapQuote(
       expired: false,
     };
   } catch (error) {
-    console.error('[Payment] Error getting swap quote:', error);
+    logger.error('[Payment] Error getting swap quote:', error);
     return null;
   }
 }
@@ -89,7 +89,7 @@ export async function getValidSwapQuote(paymentId: string) {
     
     if (isExpired) {
       // Quote expired, need to refresh
-      console.log(`[Payment] Swap quote expired for payment ${paymentId}, refreshing...`);
+      logger.info(`[Payment] Swap quote expired for payment ${paymentId}, refreshing...`);
 
       // Get payment details to get tokens and amount
       const payment = await prisma.payment.findUnique({
@@ -122,7 +122,7 @@ export async function getValidSwapQuote(paymentId: string) {
 
     return swapQuote;
   } catch (error) {
-    console.error('[Payment] Error getting valid swap quote:', error);
+    logger.error('[Payment] Error getting valid swap quote:', error);
     return null;
   }
 }
@@ -153,12 +153,12 @@ export async function checkPriceImpact(paymentId: string): Promise<{
       requiresConfirmation: priceImpactPercent > 5,
     };
   } catch (error) {
-    console.error('[Payment] Error checking price impact:', error);
+    logger.error('[Payment] Error checking price impact:', error);
     return { hasPriceChange: false, priceChangePercent: 0, requiresConfirmation: false };
   }
 }
 
-// ─── Create Payment ─────────────────────────────────────────
+// ─── Create Payment (Non-Custodial) ─────────────────────────
 
 export async function createPayment(input: CreatePaymentInput) {
   const { merchantId, amount, token, customerEmail, customerWallet, metadata } = input;
@@ -179,9 +179,6 @@ export async function createPayment(input: CreatePaymentInput) {
     throw new AppError('Merchant not found', 404);
   }
 
-  // Generate unique receiving address with encrypted private key
-  const { address, encryptedPrivateKey } = generateReceivingWallet();
-
   // Set expiry to 24 hours from now
   const expiresAt = new Date(Date.now() + PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000);
 
@@ -191,7 +188,8 @@ export async function createPayment(input: CreatePaymentInput) {
   // Determine if swap is needed
   const swapNeeded = customerTokenSymbol !== merchantPreferredToken;
 
-  // Create payment record
+  // NON-CUSTODIAL: No deposit wallet creation.
+  // Payment intent is created, customer will pay directly from their wallet.
   const paymentData: Prisma.PaymentCreateInput = {
     merchant: {
       connect: { id: merchantId }
@@ -202,8 +200,9 @@ export async function createPayment(input: CreatePaymentInput) {
     customerWallet: customerWallet || null,
     metadata: metadata || Prisma.JsonNull,
     status: 'PENDING',
-    receivingAddress: address,
-    privateKey: encryptedPrivateKey,
+    // Non-custodial: store merchant wallet directly
+    merchantWallet: merchant.walletAddress,
+    // No receivingAddress or privateKey needed — non-custodial
     expiresAt,
     swapRequired: swapNeeded,
     swappedFrom: swapNeeded ? customerTokenSymbol : null,
@@ -238,7 +237,7 @@ export async function createPayment(input: CreatePaymentInput) {
     settlementToken: payment.token, // Token merchant will receive
     customerPaymentToken: customerTokenSymbol, // Token customer is paying with
     status: payment.status,
-    receivingAddress: payment.receivingAddress,
+    merchantWallet: merchant.walletAddress, // Customer pays directly to merchant
     checkoutUrl: `${CHECKOUT_BASE_URL}/pay/${payment.id}`,
     swapRequired: swapNeeded,
     swapQuote: swapQuoteInfo?.quote || null,
@@ -302,6 +301,7 @@ export async function listPayments(input: ListPaymentsInput) {
       customerWallet: true,
       customerEmail: true,
       txHash: true,
+      merchantWallet: true,
       createdAt: true,
       completedAt: true,
     },
@@ -400,12 +400,10 @@ export async function getPaymentById(paymentId: string, merchantId: string) {
     status: payment.status,
     customerWallet: payment.customerWallet,
     customerEmail: payment.customerEmail,
-    receivingAddress: payment.receivingAddress,
+    merchantWallet: payment.merchantWallet,
     txHash: payment.txHash,
     metadata: payment.metadata,
     swapDetails,
-    settled: payment.settled,
-    settledAt: payment.settledAt?.toISOString() || null,
     timeline,
     refunds: payment.refunds.map((r) => ({
       id: r.id,
@@ -436,6 +434,7 @@ export async function getPaymentStatus(paymentId: string, merchantId: string) {
       amount: true,
       token: true,
       customerWallet: true,
+      merchantWallet: true,
       txHash: true,
       completedAt: true,
     },
@@ -448,6 +447,56 @@ export async function getPaymentStatus(paymentId: string, merchantId: string) {
   return {
     ...payment,
     completedAt: payment.completedAt?.toISOString() || null,
+  };
+}
+
+// ─── Retry Failed Payment ───────────────────────────────────
+
+export async function retryPayment(paymentId: string, merchantId: string) {
+  const payment = await prisma.payment.findFirst({
+    where: {
+      id: paymentId,
+      merchantId,
+    },
+    include: {
+      merchant: true,
+    },
+  });
+
+  if (!payment) {
+    throw new AppError('Payment not found', 404);
+  }
+
+  if (payment.status !== 'FAILED') {
+    throw new AppError('Only FAILED payments can be retried', 400);
+  }
+
+  if (!payment.customerWallet) {
+    throw new AppError('Cannot retry: no customer wallet on this payment', 400);
+  }
+
+  // Reset payment status for retry
+  await prisma.payment.update({
+    where: { id: paymentId },
+    data: {
+      status: 'PENDING',
+      swapRetries: 0,
+      lastSwapError: null,
+      adminAlertSent: false,
+    },
+  });
+
+  await prisma.paymentEvent.create({
+    data: {
+      paymentId,
+      status: 'PENDING',
+    },
+  });
+
+  return {
+    id: payment.id,
+    status: 'PENDING',
+    message: 'Payment has been reset for retry. Customer will need to approve the transaction again.',
   };
 }
 
@@ -486,8 +535,9 @@ export async function exportPayments(
     'Status',
     'Customer Wallet',
     'Customer Email',
+    'Merchant Wallet',
     'Transaction Hash',
-    'Receiving Address',
+    'Swap Tx Hash',
     'Created At',
     'Completed At',
   ];
@@ -500,8 +550,9 @@ export async function exportPayments(
       p.status,
       p.customerWallet || '',
       p.customerEmail || '',
+      p.merchantWallet || '',
       p.txHash || '',
-      p.receivingAddress,
+      p.swapTxHash || '',
       p.createdAt.toISOString(),
       p.completedAt?.toISOString() || '',
     ]
@@ -562,13 +613,6 @@ export async function getPaymentStats(merchantId: string) {
 
   // Total transactions
   const totalTxCount = await prisma.payment.count({ where: { merchantId } });
-
-  // Pending settlements (completed but not settled)
-  const pendingSettlementAgg = await prisma.payment.aggregate({
-    where: { merchantId, status: 'COMPLETED', settled: false },
-    _sum: { amount: true },
-    _count: true,
-  });
 
   // Success rate
   const completedCount = revenueAgg._count;
@@ -637,8 +681,6 @@ export async function getPaymentStats(merchantId: string) {
     totalRevenue: revenueAgg._sum.amount || 0,
     totalTransactions: totalTxCount,
     completedTransactions: completedCount,
-    pendingSettlementAmount: pendingSettlementAgg._sum.amount || 0,
-    pendingSettlementCount: pendingSettlementAgg._count,
     successRate,
     tokenDistribution,
     dailyRevenue,
@@ -652,4 +694,3 @@ export async function getPaymentStats(merchantId: string) {
     })),
   };
 }
-
