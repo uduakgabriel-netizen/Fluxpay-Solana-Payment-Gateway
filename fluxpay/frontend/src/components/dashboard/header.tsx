@@ -38,7 +38,7 @@ const routeTitles: Record<string, string> = {
 export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
   const router = useRouter()
   const { isDark, toggleTheme } = useTheme()
-  const { merchant } = useAuth()
+  const { merchant, logout } = useAuth()
   const notifications: any[] = []
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -63,7 +63,7 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
 
   const handleLogout = async () => {
     try {
-      await logOut()
+      await logout()
     } catch (error) {
       // Fallback if logout fails
       router.push('/login')
