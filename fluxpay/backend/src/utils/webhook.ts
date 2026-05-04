@@ -130,23 +130,6 @@ export async function shutdownWebhookQueue(): Promise<void> {
   }
 }
 
-// ─── Signature Generation ───────────────────────────────────
-
-/**
- * Generate HMAC-SHA256 signature for webhook payload
- */
-export function generateWebhookSignature(payload: string, secret: string): string {
-  return createHmac('sha256', secret).update(payload).digest('hex');
-}
-
-/**
- * Generate a random webhook secret
- */
-export function generateWebhookSecret(): string {
-  const { randomBytes } = require('crypto');
-  return `whsec_${randomBytes(24).toString('hex')}`;
-}
-
 // ─── Webhook Delivery ───────────────────────────────────────
 
 interface DeliverWebhookInput {
@@ -155,83 +138,70 @@ interface DeliverWebhookInput {
   data: Record<string, any>;
 }
 
-/**
- * Deliver a webhook event to all matching merchant configs.
- * Creates log entries and enqueues in BullMQ for persistent delivery.
- * Falls back to in-memory delivery if Redis is unavailable.
- */
+import { generateWebhookSignature } from './secrets';
+
 export async function deliverWebhook(input: DeliverWebhookInput): Promise<void> {
   const { merchantId, event, data } = input;
 
   try {
-    // Check cache first
-    const cacheKey = `webhookConfig:${merchantId}`;
-    let configs: any = await cacheService.get(cacheKey);
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: merchantId },
+      select: { webhookUrl: true, webhookSecret: true },
+    });
 
-    if (!configs) {
-      // Find active webhook configs for this merchant that subscribe to this event
-      configs = await prisma.webhookConfig.findMany({
-        where: {
-          merchantId,
-          active: true,
-        },
-      });
-      await cacheService.set(cacheKey, configs, 5 * 60); // 5 minutes TTL
+    if (!merchant || !merchant.webhookUrl || !merchant.webhookSecret) {
+      return; // Merchant hasn't configured webhooks
     }
 
-    for (const config of configs) {
-      const subscribedEvents = config.events as string[];
-      if (!subscribedEvents.includes(event)) continue;
+    // Build payload
+    const payload = {
+      id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      event,
+      data,
+      timestamp: new Date().toISOString(),
+      merchantId,
+    };
 
-      // Build payload
-      const payload = {
-        id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        event,
-        data,
-        timestamp: new Date().toISOString(),
+    const payloadStr = JSON.stringify(payload);
+
+    // Generate Stripe-style signature
+    const { signature } = generateWebhookSignature(payloadStr, merchant.webhookSecret);
+    const maxRetries = 5;
+
+    // Create log entry
+    const log = await prisma.webhookLog.create({
+      data: {
         merchantId,
-      };
+        event,
+        url: merchant.webhookUrl,
+        payload,
+        status: 'PENDING',
+        attempt: 1,
+        maxAttempts: maxRetries,
+      },
+    });
 
-      const payloadStr = JSON.stringify(payload);
-
-      // Generate signature
-      const signature = generateWebhookSignature(payloadStr, config.secret);
-
-      // Create log entry
-      const log = await prisma.webhookLog.create({
-        data: {
-          merchantId,
+    if (useRedis && webhookQueue) {
+      // Enqueue in BullMQ for persistent delivery
+      await webhookQueue.add(
+        'deliver',
+        {
+          logId: log.id,
+          url: merchant.webhookUrl,
+          payloadStr,
+          signature,
           event,
-          url: config.url,
-          payload,
-          status: 'PENDING',
-          attempt: 1,
-          maxAttempts: config.maxRetries,
+          maxAttempts: maxRetries,
         },
-      });
-
-      if (useRedis && webhookQueue) {
-        // Enqueue in BullMQ for persistent delivery
-        await webhookQueue.add(
-          'deliver',
-          {
-            logId: log.id,
-            url: config.url,
-            payloadStr,
-            signature,
-            event,
-            maxAttempts: config.maxRetries,
-          },
-          {
-            jobId: `webhook_${log.id}`,
-            attempts: config.maxRetries,
-          }
-        );
-      } else {
-        // Fallback: in-memory delivery with retry
-        attemptDeliveryInMemory(log.id, config.url, payloadStr, signature, 1, config.maxRetries, config.retryBackoff)
-          .catch((err) => logger.error(`[Webhook] Delivery error for log ${log.id}:`, err));
-      }
+        {
+          jobId: `webhook_${log.id}`,
+          attempts: maxRetries,
+        }
+      );
+    } else {
+      // Fallback: in-memory delivery with retry
+      attemptDeliveryInMemory(log.id, merchant.webhookUrl, payloadStr, signature, 1, maxRetries, 1000)
+        .catch((err) => logger.error(`[Webhook] Delivery error for log ${log.id}:`, err));
     }
   } catch (error) {
     logger.error(`[Webhook] Error delivering ${event} for merchant ${merchantId}:`, error);
@@ -525,7 +495,7 @@ export async function sendTestWebhook(
   };
 
   const payloadStr = JSON.stringify(payload);
-  const signature = generateWebhookSignature(payloadStr, secret);
+  const { signature } = generateWebhookSignature(payloadStr, secret);
 
   const startTime = Date.now();
 

@@ -4,14 +4,14 @@
   "description": "FluxPay Solana Payment Gateway - Backend API",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node src/index.ts",
+    "dev": "dotenvx run -- ts-node src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "test": "jest --coverage",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev --name non_custodial",
-    "db:push": "prisma db push --accept-data-loss",
-    "db:studio": "prisma studio"
+    "start": "dotenvx run -- node dist/index.js",
+    "test": "dotenvx run -- jest --coverage",
+    "db:generate": "dotenvx run -- prisma generate",
+    "db:migrate": "dotenvx run -- prisma migrate dev --name non_custodial",
+    "db:push": "dotenvx run -- prisma db push --accept-data-loss",
+    "db:studio": "dotenvx run -- prisma studio"
   },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.61.1",

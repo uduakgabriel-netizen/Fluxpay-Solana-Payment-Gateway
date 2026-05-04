@@ -21,6 +21,19 @@ model Merchant {
   preferredTokenMint     String          @default("So11111111111111111111111111111111111111112")
   preferredTokenSymbol   String          @default("SOL")
   preferredTokenUpdatedAt DateTime       @default(now())
+
+  // API Key fields
+  apiKeyHash             String?         @unique
+  apiKeyPrefix           String?
+  apiKeyLastChars        String?
+  apiKeyRotatedAt        DateTime?
+
+  // Webhook fields
+  webhookSecret          String?
+  webhookSecretPrefix    String?
+  webhookSecretLastChars String?
+  webhookSecretRotatedAt DateTime?
+  webhookUrl             String?
   apiKeys                 ApiKey[]
   invoices                Invoice[]
   payments                Payment[]
@@ -31,6 +44,7 @@ model Merchant {
   teamMembers             TeamMember[]
   webhookConfigs          WebhookConfig[]
   webhookLogs             WebhookLog[]
+  checkoutSessions        CheckoutSession[]
 
   @@map("merchants")
 }
@@ -317,6 +331,42 @@ model TeamMember {
   @@unique([merchantId, email])
   @@index([merchantId])
   @@map("team_members")
+}
+
+model CheckoutSession {
+  id                String                @id @default(cuid())
+  merchantId        String
+  orderId           String?
+  amount            Float
+  token             String                @default("USDC")
+  customerWallet    String?
+  status            CheckoutSessionStatus @default(PENDING)
+  successUrl        String?
+  cancelUrl         String?
+  webhookUrl        String?
+  swapQuote         Json?
+  transactionHash   String?
+  paymentId         String?               @unique
+  errorMessage      String?
+  expiresAt         DateTime
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  merchant          Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("checkout_sessions")
+}
+
+enum CheckoutSessionStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAYMENT_DETECTED
+  SWAPPING
+  COMPLETED
+  FAILED
+  EXPIRED
 }
 
 enum ApiKeyMode {

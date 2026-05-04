@@ -2,42 +2,36 @@ import apiClient from './client'
 
 // ─── Types ──────────────────────────────────────────────────
 
-export interface Webhook {
-  id: string
-  url: string
-  events: string[]
-  status: string
-  secret: string
-  lastDeliveredAt: string | null
-  createdAt: string
+export interface WebhookSecretInfo {
+  prefix: string
+  lastChars: string
+  rotatedAt: string
 }
 
-export interface WebhookListResponse {
-  data: Webhook[]
+export interface WebhookInfo {
+  webhookUrl: string | null
+  secretInfo: WebhookSecretInfo | null
 }
 
-export interface CreateWebhookInput {
-  url: string
-  events: string[]
+export interface WebhookRollResponse {
+  fullSecret: string
+  prefix: string
+  lastChars: string
+  rotatedAt: string
 }
 
 // ─── API Functions ──────────────────────────────────────────
 
-export async function listWebhooks(): Promise<WebhookListResponse> {
-  const { data } = await apiClient.get<WebhookListResponse>('/webhooks')
+export async function getWebhookInfo(): Promise<WebhookInfo> {
+  const { data } = await apiClient.get<WebhookInfo>('/merchants/webhook')
   return data
 }
 
-export async function createWebhook(input: CreateWebhookInput): Promise<Webhook> {
-  const { data } = await apiClient.post<Webhook>('/webhooks', input)
-  return data
+export async function updateWebhookUrl(webhookUrl: string | null): Promise<void> {
+  await apiClient.put('/merchants/webhook/url', { webhookUrl })
 }
 
-export async function deleteWebhook(webhookId: string): Promise<void> {
-  await apiClient.delete(`/webhooks/${webhookId}`)
-}
-
-export async function testWebhook(webhookId: string): Promise<{ success: boolean }> {
-  const { data } = await apiClient.post<{ success: boolean }>(`/webhooks/${webhookId}/test`)
+export async function rollWebhookSecret(): Promise<WebhookRollResponse> {
+  const { data } = await apiClient.post<WebhookRollResponse>('/merchants/webhook/roll')
   return data
 }

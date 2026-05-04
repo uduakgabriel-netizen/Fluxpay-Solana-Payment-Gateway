@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger';
 import { PrismaClient } from '@prisma/client';
 import { expirePendingPayments } from '../services/payment.service';
+import { expireCheckoutSessions } from '../services/checkout.service';
 import { deliverWebhook } from '../utils/webhook';
 
 const prisma = new PrismaClient();
@@ -50,6 +51,12 @@ export async function runExpirePayments(): Promise<void> {
           logger.error(`[Cron] Failed to send expiry webhook for ${payment.id}:`, err)
         );
       }
+    }
+
+    // Also expire stale checkout sessions
+    const checkoutCount = await expireCheckoutSessions();
+    if (checkoutCount > 0) {
+      logger.info(`[Cron] Expired ${checkoutCount} checkout session(s)`);
     }
   } catch (error) {
     logger.error('[Cron] Error expiring payments:', error);

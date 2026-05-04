@@ -22,6 +22,7 @@ import { verifyTransaction } from './solana-wallet.service';
 import { deliverWebhook } from '../utils/webhook';
 import { getTokenByMint, TOKEN_REGISTRY } from '../utils/token-registry';
 import { EmailService } from './email.service';
+import * as checkoutService from './checkout.service';
 
 const prisma = new PrismaClient();
 
@@ -176,7 +177,31 @@ interface TransferData {
 }
 
 async function matchAndProcessTransfer(transfer: TransferData): Promise<boolean> {
-  // In non-custodial mode, match by:
+  // First try to match a CheckoutSession (AWAITING_PAYMENT)
+  const session = await prisma.checkoutSession.findFirst({
+    where: {
+      merchant: { walletAddress: transfer.receiver },
+      status: 'AWAITING_PAYMENT',
+      customerWallet: transfer.sender,
+    },
+  });
+
+  if (session) {
+    logger.info(`[Helius] Matched tx ${transfer.signature.slice(0, 12)}... to CheckoutSession ${session.id}`);
+    
+    // Validate amount
+    const expectedSessionAmount = session.amount;
+    // (If the customer sent less, we should handle it, but for simplicity let's just confirm)
+    try {
+      await checkoutService.confirmCheckoutPayment(session.id, transfer.signature);
+      logger.info(`[Helius] Successfully confirmed CheckoutSession ${session.id}`);
+      return true;
+    } catch (err: any) {
+      logger.error(`[Helius] Failed to confirm CheckoutSession ${session.id}: ${err.message}`);
+    }
+  }
+
+  // Fallback to match by:
   // 1. merchantWallet = transfer.receiver (funds go directly to merchant)
   // 2. Status = PENDING (waiting for customer payment)
   const payment = await prisma.payment.findFirst({

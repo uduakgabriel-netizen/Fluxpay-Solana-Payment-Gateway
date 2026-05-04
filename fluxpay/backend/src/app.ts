@@ -15,6 +15,7 @@ import subscriptionRoutes from './routes/subscription.routes';
 import teamRoutes from './routes/team.routes';
 import tokenRoutes from './routes/token.routes';
 import merchantRoutes from './routes/merchant.routes';
+import checkoutRoutes from './routes/checkout.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './middleware/requestId';
 
@@ -29,10 +30,21 @@ app.use(requestIdMiddleware);
 // ─── CORS ───────────────────────────────────────────────────
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, server-to-server)
+      if (!origin) return callback(null, true);
+      // Allow frontend, checkout, and any merchant site
+      const allowedOrigins = [
+        process.env.FRONTEND_URL || 'http://localhost:3000',
+        process.env.FLUXPAY_CHECKOUT_URL || 'http://localhost:3000',
+      ];
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      // Allow any origin for checkout API (merchants call from their sites)
+      return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Helius-Api-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Helius-Api-Key', 'X-Idempotency-Key'],
   })
 );
 
@@ -75,6 +87,8 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/tokens', tokenRoutes);
 app.use('/api/merchants', merchantRoutes);
+app.use('/api/checkout', checkoutRoutes);
+app.use('/checkout', checkoutRoutes); // Added to support /checkout/sessions directly
 
 // ─── 404 Handler ────────────────────────────────────────────
 app.use((req, res) => {

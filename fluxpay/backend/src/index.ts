@@ -32,6 +32,7 @@ async function bootstrap() {
   Blockchain:   http://localhost:${PORT}/api/blockchain
   Tokens:       http://localhost:${PORT}/api/tokens
   Merchants:    http://localhost:${PORT}/api/merchants
+  Checkout:     http://localhost:${PORT}/api/checkout
   ─────────────────────────────────────────
   `);
 

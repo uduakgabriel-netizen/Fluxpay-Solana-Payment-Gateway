@@ -10,6 +10,7 @@ export const logger = winston.createLogger({
     json()
   ),
   transports: [
-    new winston.transports.Console()
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'backend_error.log' })
   ],
 });

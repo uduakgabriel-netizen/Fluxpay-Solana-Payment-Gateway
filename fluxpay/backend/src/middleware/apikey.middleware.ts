@@ -31,53 +31,29 @@ export const requireApiKey = async (
     const keyHash = createHash('sha256').update(apiKey).digest('hex');
 
     const cacheKey = `apikey:${keyHash}`;
-    let apiKeyRecord: any = await cacheService.get(cacheKey);
+    let merchantRecord: any = await cacheService.get(cacheKey);
 
-    if (!apiKeyRecord) {
-      // Find the API key in the database
-      apiKeyRecord = await prisma.apiKey.findUnique({
-        where: { keyHash },
-        include: { merchant: true },
+    if (!merchantRecord) {
+      merchantRecord = await prisma.merchant.findUnique({
+        where: { apiKeyHash: keyHash },
       });
 
-      if (apiKeyRecord && !apiKeyRecord.revoked) {
-        await cacheService.set(cacheKey, apiKeyRecord, 60 * 60); // 1 hour TTL
+      if (merchantRecord) {
+        await cacheService.set(cacheKey, merchantRecord, 60 * 60); // 1 hour TTL
       }
     }
 
-    if (!apiKeyRecord) {
+    if (!merchantRecord) {
       res.status(401).json({ error: 'Invalid API key' });
       return;
     }
 
-    // Check if key has been revoked
-    if (apiKeyRecord.revoked) {
-      res.status(401).json({ error: 'API key has been revoked' });
-      return;
-    }
-
-    // Get client IP
-    const clientIp =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.socket.remoteAddress ||
-      'unknown';
-
-    // Update usage tracking (lastUsed, requestCount, lastIp)
-    await prisma.apiKey.update({
-      where: { id: apiKeyRecord.id },
-      data: {
-        lastUsed: new Date(),
-        requestCount: { increment: 1 },
-        lastIp: clientIp,
-      },
-    });
-
     // Attach merchant to request
     req.merchant = {
-      id: apiKeyRecord.merchant.id,
-      walletAddress: apiKeyRecord.merchant.walletAddress,
-      email: apiKeyRecord.merchant.email,
-      businessName: apiKeyRecord.merchant.businessName,
+      id: merchantRecord.id,
+      walletAddress: merchantRecord.walletAddress,
+      email: merchantRecord.email,
+      businessName: merchantRecord.businessName,
     };
 
     next();

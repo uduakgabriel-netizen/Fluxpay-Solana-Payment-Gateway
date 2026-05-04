@@ -1,22 +1,28 @@
 import { PrismaClient, WebhookLogStatus, Prisma } from '@prisma/client';
 import { AppError } from './auth.service';
-import { generateWebhookSecret, sendTestWebhook } from '../utils/webhook';
+import { sendTestWebhook } from '../utils/webhook';
+import { generateWebhookSecretKey } from '../utils/secrets';
 
 const prisma = new PrismaClient();
 
 // ─── Get Webhook Config ─────────────────────────────────────
 
 export async function getWebhookConfig(merchantId: string) {
-  const config = await prisma.webhookConfig.findFirst({
-    where: { merchantId },
+  const merchant = await prisma.merchant.findUnique({
+    where: { id: merchantId },
+    select: {
+      webhookUrl: true,
+      webhookSecret: true,
+      webhookSecretRotatedAt: true,
+    },
   });
 
-  if (!config) {
+  if (!merchant || !merchant.webhookSecret) {
     return {
       configured: false,
-      url: null,
-      events: [],
-      active: false,
+      url: merchant?.webhookUrl || null,
+      events: ['payment.completed', 'payment.failed', 'payment.expired'], // defaults
+      active: !!merchant?.webhookUrl,
       maxRetries: 5,
       secret: null,
     };
@@ -24,16 +30,14 @@ export async function getWebhookConfig(merchantId: string) {
 
   return {
     configured: true,
-    id: config.id,
-    url: config.url,
-    events: config.events,
-    active: config.active,
-    maxRetries: config.maxRetries,
-    retryBackoff: config.retryBackoff,
+    url: merchant.webhookUrl,
+    events: ['payment.completed', 'payment.failed', 'payment.expired'],
+    active: !!merchant.webhookUrl,
+    maxRetries: 5,
+    retryBackoff: 1000,
     // Show partial secret for display: whsec_abc...xyz
-    secretPreview: config.secret.slice(0, 10) + '...' + config.secret.slice(-4),
-    createdAt: config.createdAt.toISOString(),
-    updatedAt: config.updatedAt.toISOString(),
+    secretPreview: merchant.webhookSecret.slice(0, 10) + '...' + merchant.webhookSecret.slice(-4),
+    updatedAt: merchant.webhookSecretRotatedAt?.toISOString() || new Date().toISOString(),
   };
 }
 
@@ -48,61 +52,53 @@ interface UpdateWebhookInput {
 }
 
 export async function updateWebhookConfig(input: UpdateWebhookInput) {
-  const { merchantId, url, events, active, maxRetries } = input;
+  const { merchantId, url } = input;
 
-  // Check if config already exists
-  const existing = await prisma.webhookConfig.findFirst({
-    where: { merchantId },
+  const existing = await prisma.merchant.findUnique({
+    where: { id: merchantId },
+    select: { webhookSecret: true },
   });
 
-  if (existing) {
-    // Update existing
-    const updated = await prisma.webhookConfig.update({
-      where: { id: existing.id },
-      data: {
-        url,
-        events,
-        active,
-        maxRetries,
-      },
+  if (existing?.webhookSecret) {
+    // Just update URL
+    const updated = await prisma.merchant.update({
+      where: { id: merchantId },
+      data: { webhookUrl: url },
     });
 
     return {
-      id: updated.id,
-      url: updated.url,
-      events: updated.events,
-      active: updated.active,
-      maxRetries: updated.maxRetries,
-      secretPreview: updated.secret.slice(0, 10) + '...' + updated.secret.slice(-4),
-      updatedAt: updated.updatedAt.toISOString(),
+      url: updated.webhookUrl,
+      events: ['payment.completed', 'payment.failed', 'payment.expired'],
+      active: !!updated.webhookUrl,
+      maxRetries: 5,
+      secretPreview: updated.webhookSecret!.slice(0, 10) + '...' + updated.webhookSecret!.slice(-4),
+      updatedAt: updated.webhookSecretRotatedAt?.toISOString() || new Date().toISOString(),
       message: 'Webhook configuration updated.',
     };
   }
 
   // Create new config with generated secret
-  const secret = generateWebhookSecret();
+  const generated = generateWebhookSecretKey();
 
-  const config = await prisma.webhookConfig.create({
+  const updated = await prisma.merchant.update({
+    where: { id: merchantId },
     data: {
-      merchantId,
-      url,
-      secret,
-      events,
-      active,
-      maxRetries,
+      webhookUrl: url,
+      webhookSecret: generated.fullSecret,
+      webhookSecretPrefix: generated.prefix,
+      webhookSecretLastChars: generated.lastChars,
+      webhookSecretRotatedAt: new Date(),
     },
   });
 
   return {
-    id: config.id,
-    url: config.url,
-    events: config.events,
-    active: config.active,
-    maxRetries: config.maxRetries,
-    // Return full secret on creation only
-    secret: config.secret,
-    secretPreview: config.secret.slice(0, 10) + '...' + config.secret.slice(-4),
-    createdAt: config.createdAt.toISOString(),
+    url: updated.webhookUrl,
+    events: ['payment.completed', 'payment.failed', 'payment.expired'],
+    active: !!updated.webhookUrl,
+    maxRetries: 5,
+    secret: updated.webhookSecret, // Return full secret on creation only
+    secretPreview: updated.webhookSecret!.slice(0, 10) + '...' + updated.webhookSecret!.slice(-4),
+    createdAt: updated.webhookSecretRotatedAt?.toISOString(),
     message: 'Webhook configured. Store the signing secret securely — it will not be shown in full again.',
   };
 }
@@ -110,22 +106,19 @@ export async function updateWebhookConfig(input: UpdateWebhookInput) {
 // ─── Test Webhook ───────────────────────────────────────────
 
 export async function testWebhook(merchantId: string) {
-  const config = await prisma.webhookConfig.findFirst({
-    where: { merchantId },
+  const merchant = await prisma.merchant.findUnique({
+    where: { id: merchantId },
+    select: { webhookUrl: true, webhookSecret: true },
   });
 
-  if (!config) {
+  if (!merchant || !merchant.webhookUrl || !merchant.webhookSecret) {
     throw new AppError('No webhook configured. Set up a webhook URL first.', 400);
   }
 
-  if (!config.active) {
-    throw new AppError('Webhook is currently disabled. Enable it before testing.', 400);
-  }
-
-  const result = await sendTestWebhook(merchantId, config.url, config.secret);
+  const result = await sendTestWebhook(merchantId, merchant.webhookUrl, merchant.webhookSecret);
 
   return {
-    url: config.url,
+    url: merchant.webhookUrl,
     ...result,
     message: result.success
       ? 'Test webhook delivered successfully!'
@@ -181,7 +174,6 @@ export async function listWebhookLogs(input: ListWebhookLogsInput) {
     },
   });
 
-  // Summary
   const [successCount, failedCount, retryingCount] = await Promise.all([
     prisma.webhookLog.count({ where: { merchantId, status: 'SUCCESS' } }),
     prisma.webhookLog.count({ where: { merchantId, status: 'FAILED' } }),
