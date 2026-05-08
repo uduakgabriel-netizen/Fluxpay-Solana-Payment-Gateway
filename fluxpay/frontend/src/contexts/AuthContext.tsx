@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useRouter } from 'next/router'
 import * as authApi from '@/services/api/auth'
-import { getToken, setToken, setMerchant, clearAuth } from '@/utils/token'
+import { getToken, setToken, removeToken, setMerchant, getMerchant, removeMerchant, clearAuth } from '@/utils/token'
+import bs58 from 'bs58'
 
 interface MerchantInfo {
   id: string

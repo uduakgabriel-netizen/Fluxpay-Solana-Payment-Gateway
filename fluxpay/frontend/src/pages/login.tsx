@@ -15,7 +15,7 @@ const WalletMultiButton = dynamic(
 
 const Login: NextPage = () => {
   const { connected } = useWallet()
-  const { isAuthenticated, loginWithWallet, loading: authLoading } = useAuth()
+  const { isAuthenticated, loginWithWallet, loginWithEmail, loading: authLoading } = useAuth()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
