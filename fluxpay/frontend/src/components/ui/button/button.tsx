@@ -1,7 +1,7 @@
-import { motion } from 'framer-motion'
-import { forwardRef, ButtonHTMLAttributes } from 'react'
+import { motion, HTMLMotionProps } from 'framer-motion'
+import { forwardRef } from 'react'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends HTMLMotionProps<'button'> {
   variant?: 'primary' | 'secondary' | 'outline'
   size?: 'sm' | 'md' | 'lg'
   isLoading?: boolean
@@ -44,6 +44,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
+        {...(props as any)}
       >
         {content}
       </motion.a>
@@ -51,7 +52,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
   }
 
   return (
-    <motion.a
+    <motion.button
       ref={ref}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
@@ -60,7 +61,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
       {...props}
     >
       {content}
-    </motion.a>
+    </motion.button>
   )
 })
 
