@@ -32,7 +32,7 @@ import { AlertService } from './alert.service';
 
 const prisma = new PrismaClient();
 
-const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://quote-api.jup.ag/v6';
+const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://api.jup.ag/swap/v2';
 const MAX_SWAP_RETRIES = 5;
 const INITIAL_SLIPPAGE_BPS = 100; // 1%
 const MIN_MERCHANT_SOL_BALANCE = 0.005; // Minimum SOL for ATA rent
@@ -136,11 +136,18 @@ function getSlippageForAttempt(attempt: number): number {
   return slippageMap[attempt] || 1000;
 }
 
-// ─── Get Non-Custodial Swap Quote ───────────────────────────
+// ─── Get Non-Custodial Swap Quote (ExactOut) ────────────────
 
 /**
- * Get a swap quote for a non-custodial swap.
- * The quote is configured to swap FROM customer wallet TO merchant wallet.
+ * Get a swap quote for a non-custodial swap using ExactOut mode.
+ *
+ * For payments, the merchant specifies the exact output amount they want.
+ * Jupiter calculates how much input the buyer needs to send.
+ *
+ * @param fromToken - Buyer's token symbol (e.g., "BONK")
+ * @param toToken - Merchant's desired token symbol (e.g., "USDC")
+ * @param amount - Exact amount the merchant wants to RECEIVE (human-readable)
+ * @param slippageBps - Slippage tolerance in basis points
  */
 export async function getNonCustodialQuote(
   fromToken: string,
@@ -156,21 +163,25 @@ export async function getNonCustodialQuote(
     return null;
   }
 
-  const fromTokenInfo = getTokenBySymbol(fromToken);
-  if (!fromTokenInfo) return null;
+  // ExactOut: amount is the desired OUTPUT, so use the OUTPUT token's decimals
+  const toTokenInfo = getTokenBySymbol(toToken);
+  if (!toTokenInfo) {
+    logger.error(`[NonCustodial] Unknown output token: ${toToken}`);
+    return null;
+  }
 
-  // Convert human-readable amount to smallest unit
-  const amountInSmallestUnit = Math.floor(amount * Math.pow(10, fromTokenInfo.decimals));
+  // Convert human-readable output amount to smallest unit (e.g., 200 USDC → 200000000)
+  const outputAmountSmallest = Math.floor(amount * Math.pow(10, toTokenInfo.decimals));
 
   try {
     const url = new URL(`${JUPITER_API_URL}/quote`);
     url.searchParams.set('inputMint', inputMint);
     url.searchParams.set('outputMint', outputMint);
-    url.searchParams.set('amount', amountInSmallestUnit.toString());
+    url.searchParams.set('amount', outputAmountSmallest.toString());
     url.searchParams.set('slippageBps', slippageBps.toString());
-    url.searchParams.set('swapMode', 'ExactIn');
+    url.searchParams.set('swapMode', 'ExactOut');
 
-    logger.info(`[NonCustodial] Getting quote: ${amount} ${fromToken} → ${toToken} (slippage: ${slippageBps}bps)`);
+    logger.info(`[NonCustodial] Getting ExactOut quote: merchant wants ${amount} ${toToken} (${outputAmountSmallest} smallest), buyer pays with ${fromToken} (slippage: ${slippageBps}bps)`);
 
     const response = await fetch(url.toString(), {
       signal: AbortSignal.timeout(15000),
@@ -216,12 +227,19 @@ export async function buildSwapTransaction(
   quote: NonCustodialSwapQuote;
   outputAmount: number;
 } | null> {
-  // 1. Get quote
+  // 1. Get ExactOut quote — amount is what the merchant wants to receive
   const quote = await getNonCustodialQuote(fromToken, toToken, amount, slippageBps);
   if (!quote) return null;
 
+  // In ExactOut mode:
+  //   - outAmount = the fixed output the merchant receives
+  //   - inAmount = the variable input the buyer must send
   const toTokenInfo = getTokenBySymbol(toToken);
   const outputAmount = Number(quote.outAmount) / Math.pow(10, toTokenInfo?.decimals || 6);
+  const fromTokenInfo = getTokenBySymbol(fromToken);
+  const inputAmountHuman = Number(quote.inAmount) / Math.pow(10, fromTokenInfo?.decimals || 6);
+
+  logger.info(`[NonCustodial] ExactOut quote: buyer sends ~${inputAmountHuman} ${fromToken}, merchant receives ${outputAmount} ${toToken}`);
 
   // 2. Build swap transaction with non-custodial parameters
   try {

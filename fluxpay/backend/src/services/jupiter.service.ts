@@ -28,7 +28,7 @@ import { AlertService } from './alert.service';
 
 const prisma = new PrismaClient();
 
-const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://quote-api.jup.ag/v6';
+const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://api.jup.ag/swap/v2';
 const MAX_SWAP_RETRIES = 5;
 const QUOTE_EXPIRY_SECONDS = 60;
 const INITIAL_SLIPPAGE_BPS = 100; // 1%
@@ -61,16 +61,19 @@ export interface SwapResult {
   error?: string;
 }
 
-// ─── Get Swap Quote ─────────────────────────────────────────
+// ─── Get Swap Quote (ExactOut) ───────────────────────────────
 
 /**
- * Get the best swap quote from Jupiter API.
+ * Get the best swap quote from Jupiter API using ExactOut mode.
  *
- * @param fromToken - Token symbol to swap from (e.g., "SOL")
- * @param toToken - Token symbol to swap to (e.g., "USDC")
- * @param amount - Amount in the input token (human-readable)
+ * For a payment gateway, the merchant specifies the exact output amount they
+ * want to receive. Jupiter calculates how much input the buyer must send.
+ *
+ * @param fromToken - Token symbol to swap from (e.g., "BONK") — the buyer's token
+ * @param toToken - Token symbol to swap to (e.g., "USDC") — the merchant's token
+ * @param amount - Exact amount the merchant wants to RECEIVE (human-readable output)
  * @param slippageBps - Slippage tolerance in basis points
- * @returns Swap quote with rates and route, or null on failure
+ * @returns Swap quote with calculated input amount and route, or null on failure
  */
 export async function getSwapQuote(
   fromToken: string,
@@ -86,29 +89,36 @@ export async function getSwapQuote(
     return null;
   }
 
-  const fromTokenInfo = getTokenBySymbol(fromToken);
-  if (!fromTokenInfo) return null;
+  // ExactOut: amount is the desired OUTPUT, so use the OUTPUT token's decimals
+  const toTokenInfo = getTokenBySymbol(toToken);
+  if (!toTokenInfo) {
+    logger.error(`[Jupiter] Unknown output token: ${toToken}`);
+    return null;
+  }
 
-  // Convert human-readable amount to smallest unit
-  const amountInSmallestUnit = Math.floor(amount * Math.pow(10, fromTokenInfo.decimals));
+  // Convert human-readable output amount to smallest unit (e.g., 200 USDC → 200000000)
+  const outputAmountSmallest = Math.floor(amount * Math.pow(10, toTokenInfo.decimals));
 
   try {
     const url = new URL(`${JUPITER_API_URL}/quote`);
     url.searchParams.set('inputMint', inputMint);
     url.searchParams.set('outputMint', outputMint);
-    url.searchParams.set('amount', amountInSmallestUnit.toString());
+    url.searchParams.set('amount', outputAmountSmallest.toString());
     url.searchParams.set('slippageBps', slippageBps.toString());
-    url.searchParams.set('swapMode', 'ExactIn');
+    url.searchParams.set('swapMode', 'ExactOut');
+    url.searchParams.set('excludeDexes', 'Pump.fun Amm');
 
-    logger.info(`[Jupiter] Getting quote: ${amount} ${fromToken} → ${toToken} (slippage: ${slippageBps}bps)`);
+    console.log('Jupiter quote request:', { inputMint, outputMint, amount, outputAmountSmallest, swapMode: 'ExactOut' });
 
     const response = await fetch(url.toString(), {
       signal: AbortSignal.timeout(15000), // 15s timeout
     });
 
+    const responseText = await response.clone().text().catch(() => '');
+    console.log('Jupiter quote response:', responseText);
+
     if (!response.ok) {
-      const errText = await response.text();
-      logger.error(`[Jupiter] Quote API error (${response.status}):`, errText);
+      logger.error(`[Jupiter] Quote API error (${response.status}):`, responseText);
       return null;
     }
 
@@ -290,4 +300,144 @@ export async function processSwapIfNeeded(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Common token mints — add more as needed
+export const TOKEN_MINTS: Record<string, string> = {
+  SOL:  'So11111111111111111111111111111111111111112',
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+  JUP:  'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+};
+
+// ─────────────────────────────────────────────
+// getJupiterQuote (ExactOut by default for payments)
+// ─────────────────────────────────────────────
+export async function getJupiterQuote({ inputMint, outputMint, amount, slippageBps = 50, swapMode = 'ExactOut' }: { inputMint: string, outputMint: string, amount: number, slippageBps?: number, swapMode?: 'ExactIn' | 'ExactOut' }) {
+  const resolvedInput  = TOKEN_MINTS[inputMint?.toUpperCase()]  || inputMint;
+  const resolvedOutput = TOKEN_MINTS[outputMint?.toUpperCase()] || outputMint;
+
+  const params = new URLSearchParams({
+    inputMint:   resolvedInput,
+    outputMint:  resolvedOutput,
+    amount:      String(amount),
+    slippageBps: String(slippageBps),
+    swapMode,
+    onlyDirectRoutes: 'false',
+    asLegacyTransaction: 'false',
+  });
+
+  try {
+    const res = await fetch(`${JUPITER_API_URL}/quote?${params}`);
+
+    if (!res.ok) {
+      const body = await res.text();
+      logger.warn(`Jupiter quote failed: ${body}`, { inputMint: resolvedInput, outputMint: resolvedOutput });
+      return null;
+    }
+
+    const quote: any = await res.json();
+
+    logger.info(`Jupiter quote received for ${resolvedInput} to ${resolvedOutput} (${swapMode})`, {
+      inAmount: quote.inAmount,
+      outAmount: quote.outAmount,
+      swapMode,
+      priceImpactPct: quote.priceImpactPct,
+    });
+
+    return quote;
+  } catch (err) {
+    logger.error('Jupiter quote request threw', { err });
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────
+// buildJupiterSwapTransaction
+// ─────────────────────────────────────────────
+export async function buildJupiterSwapTransaction({ quote, userPublicKey, destinationTokenAccount }: { quote: any, userPublicKey: string, destinationTokenAccount: string }) {
+  try {
+    const body = {
+      quoteResponse: quote,
+      userPublicKey,
+      destinationTokenAccount,
+      wrapAndUnwrapSol: true,
+      useSharedAccounts: true,
+      dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: 'auto',
+    };
+
+    const res = await fetch(`${JUPITER_API_URL}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      logger.error('Jupiter swap build failed', { errBody, userPublicKey });
+      throw new Error(`Jupiter swap build failed: ${errBody}`);
+    }
+
+    const { swapTransaction, lastValidBlockHeight } = (await res.json()) as any;
+
+    const transactionBuffer = Buffer.from(swapTransaction, 'base64');
+    const transaction = VersionedTransaction.deserialize(transactionBuffer);
+
+    logger.info('Jupiter swap tx built successfully', { userPublicKey, destinationTokenAccount });
+
+    return { transaction, lastValidBlockHeight };
+  } catch (err) {
+    logger.error('buildJupiterSwapTransaction threw', { err, userPublicKey });
+    throw err;
+  }
+}
+
+// ─────────────────────────────────────────────
+// getTokenBalances
+// ─────────────────────────────────────────────
+import { Connection } from '@solana/web3.js';
+const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+export async function getTokenBalances(walletAddress: string) {
+  const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+
+  try {
+    const pubKey = new PublicKey(walletAddress);
+    const solBalance = await connection.getBalance(pubKey);
+
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+      pubKey,
+      { programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') }
+    );
+
+    const balances = [
+      {
+        mint: TOKEN_MINTS.SOL,
+        symbol: 'SOL',
+        amount: solBalance,
+        uiAmount: solBalance / 1e9,
+        decimals: 9,
+      },
+    ];
+
+    for (const account of tokenAccounts.value) {
+      const info = account.account.data.parsed.info;
+      if (info.tokenAmount.uiAmount > 0) {
+        balances.push({
+          mint: info.mint,
+          symbol: Object.keys(TOKEN_MINTS).find(k => TOKEN_MINTS[k] === info.mint) || info.mint.slice(0, 6),
+          amount: info.tokenAmount.amount,
+          uiAmount: info.tokenAmount.uiAmount,
+          decimals: info.tokenAmount.decimals,
+        });
+      }
+    }
+
+    return balances;
+  } catch (err) {
+    logger.error('Failed to fetch token balances', { err, walletAddress });
+    return [];
+  }
 }

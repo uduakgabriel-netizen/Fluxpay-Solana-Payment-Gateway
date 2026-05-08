@@ -1,6 +1,7 @@
 import express from 'express'
 import {
   getSupportedTokens,
+  searchTokens,
   getSwapQuote,
   getMerchantPreferredToken,
   updateMerchantPreferredToken,
@@ -11,6 +12,7 @@ const router = express.Router()
 
 // Public routes
 router.get('/supported', getSupportedTokens)
+router.get('/search', searchTokens)
 router.get('/quote', getSwapQuote)
 
 // Protected routes

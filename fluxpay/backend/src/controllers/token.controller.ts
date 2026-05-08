@@ -11,11 +11,32 @@ const prisma = new PrismaClient()
  */
 export async function getSupportedTokens(req: Request, res: Response) {
   try {
-    const tokens = await TokenService.getSupportedTokens()
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+    const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+    const tokens = await TokenService.getSupportedTokens({ limit, offset })
     res.json({ data: tokens })
   } catch (error) {
     logger.error('Error getting supported tokens:', error)
     res.status(500).json({ error: 'Failed to fetch supported tokens' })
+  }
+}
+
+/**
+ * GET /api/tokens/search
+ * Search tokens by query
+ */
+export async function searchTokens(req: Request, res: Response) {
+  try {
+    const { q, limit, offset } = req.query
+    const tokens = await TokenService.getSupportedTokens({ 
+      search: q as string,
+      limit: limit ? parseInt(limit as string) : 20,
+      offset: offset ? parseInt(offset as string) : undefined
+    })
+    res.json({ data: tokens })
+  } catch (error) {
+    logger.error('Error searching tokens:', error)
+    res.status(500).json({ error: 'Failed to search tokens' })
   }
 }
 
@@ -47,19 +68,29 @@ export async function getSwapQuote(req: Request, res: Response) {
     }
 
     // Fetch quote from Jupiter
-    const quoteUrl = new URL('https://quote-api.jup.ag/v6/quote')
+    const jupiterApiUrl = process.env.JUPITER_API_URL || 'https://api.jup.ag/swap/v2';
+    const quoteUrl = new URL(`${jupiterApiUrl}/quote`);
     quoteUrl.searchParams.append('inputMint', String(inputMint))
     quoteUrl.searchParams.append('outputMint', String(outputMint))
     quoteUrl.searchParams.append('amount', String(amount))
     quoteUrl.searchParams.append('slippageBps', String(slippageNum))
+    if (req.query.swapMode) {
+      quoteUrl.searchParams.append('swapMode', String(req.query.swapMode))
+    }
+    quoteUrl.searchParams.append('excludeDexes', 'Pump.fun Amm')
 
     try {
+      console.log('Jupiter quote request:', { inputMint, outputMint, amount, swapMode: req.query.swapMode || 'ExactIn' });
+      
       const quoteResponse = await Promise.race([
         fetch(quoteUrl.toString()),
         new Promise<globalThis.Response>((_, reject) =>
           setTimeout(() => reject(new Error('Request timeout')), 10000)
         ),
       ]) as globalThis.Response
+
+      const responseText = await quoteResponse.clone().text().catch(() => '');
+      console.log('Jupiter quote response:', responseText);
 
       if (!quoteResponse.ok) {
         return res.status(quoteResponse.status).json({

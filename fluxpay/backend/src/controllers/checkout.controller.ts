@@ -28,11 +28,16 @@ const createSessionSchema = z.object({
 });
 
 const executeSchema = z.object({
-  customerWallet: z.string().min(32, 'Valid Solana wallet address required'),
+  buyerWallet: z.string().min(32, 'Valid Solana wallet address required'),
+  inputToken: z.string().min(1, 'Input token is required'),
+  inputAmount: z.number().positive('Input amount must be positive'),
 });
 
 const confirmSchema = z.object({
-  txHash: z.string().min(44, 'Valid transaction hash required'),
+  txHash: z.string().min(44, 'Valid transaction signature required').optional(),
+  txSignature: z.string().min(44, 'Valid transaction signature required').optional(),
+}).refine(data => data.txHash || data.txSignature, {
+  message: 'txHash or txSignature is required',
 });
 
 // ─── POST /api/checkout/sessions ────────────────────────────
@@ -128,7 +133,12 @@ export async function executePayment(req: Request, res: Response): Promise<void>
       return;
     }
 
-    const result = await checkoutService.executeCheckoutPayment(id, parsed.data.customerWallet);
+    const result = await checkoutService.executeCheckoutPayment(
+      id, 
+      parsed.data.buyerWallet,
+      parsed.data.inputToken,
+      parsed.data.inputAmount
+    );
     res.status(200).json(result);
   } catch (error) {
     handleError(error, res);
@@ -157,7 +167,8 @@ export async function confirmPayment(req: Request, res: Response): Promise<void>
       return;
     }
 
-    const result = await checkoutService.confirmCheckoutPayment(id, parsed.data.txHash);
+    const txSig = parsed.data.txHash || parsed.data.txSignature!;
+    const result = await checkoutService.confirmCheckoutPayment(id, txSig);
     res.status(200).json(result);
   } catch (error) {
     handleError(error, res);

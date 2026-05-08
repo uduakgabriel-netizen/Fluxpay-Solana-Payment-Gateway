@@ -41,6 +41,38 @@ const CORE_FALLBACK_TOKENS = [
     logoUrl: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.svg',
     rank: 3,
   },
+  {
+    symbol: 'BONK',
+    mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+    name: 'Bonk',
+    decimals: 5,
+    logoUrl: 'https://arweave.net/hQiPZOsRZXG32Tjq8CDZvydg9qYp8c2w_AId_1y8vGo',
+    rank: 4,
+  },
+  {
+    symbol: 'JUP',
+    mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+    name: 'Jupiter',
+    decimals: 6,
+    logoUrl: 'https://static.jup.ag/jup/icon.png',
+    rank: 5,
+  },
+  {
+    symbol: 'WIF',
+    mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
+    name: 'dogwifhat',
+    decimals: 6,
+    logoUrl: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm/logo.png',
+    rank: 6,
+  },
+  {
+    symbol: 'PYTH',
+    mint: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3AkTrPvuqWeoPj',
+    name: 'Pyth Network',
+    decimals: 6,
+    logoUrl: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3AkTrPvuqWeoPj/logo.png',
+    rank: 7,
+  },
 ]
 
 // Jupiter's verified tokens API — returns verified tokens with metadata
@@ -82,9 +114,18 @@ export class TokenService {
         skip: options?.offset || 0,
       })
 
-      if (tokens.length === 0 && !options?.search) {
-        logger.warn('No tokens in cache, using core fallback list')
-        return CORE_FALLBACK_TOKENS
+      if (tokens.length === 0) {
+        if (!options?.search) {
+          logger.warn('No tokens in cache, using core fallback list');
+          return CORE_FALLBACK_TOKENS;
+        } else {
+          const searchTerm = options.search.toLowerCase();
+          return CORE_FALLBACK_TOKENS.filter(t => 
+            t.symbol.toLowerCase().includes(searchTerm) || 
+            t.name.toLowerCase().includes(searchTerm) || 
+            t.mint.toLowerCase().includes(searchTerm)
+          );
+        }
       }
 
       if (!options?.search) {

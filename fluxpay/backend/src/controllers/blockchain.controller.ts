@@ -81,8 +81,10 @@ export async function getTransaction(req: AuthRequest, res: Response): Promise<v
 
 /**
  * GET /api/blockchain/swap-quote
- * Get a Jupiter swap quote
- * Query params: from, to, amount
+ * Get a Jupiter swap quote using ExactOut mode.
+ * The `amount` parameter is the exact output amount the merchant wants to receive.
+ * Jupiter calculates how much input the buyer must send.
+ * Query params: from (buyer's token), to (merchant's token), amount (desired output)
  */
 export async function getQuote(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -112,6 +114,7 @@ export async function getQuote(req: AuthRequest, res: Response): Promise<void> {
       return;
     }
 
+    // ExactOut: amountNum is what the merchant wants to RECEIVE
     const quote = await getSwapQuote(from as string, to as string, amountNum);
 
     if (!quote) {
@@ -119,13 +122,21 @@ export async function getQuote(req: AuthRequest, res: Response): Promise<void> {
       return;
     }
 
+    // In ExactOut mode:
+    //   - inAmount = variable (what the buyer must send)
+    //   - outAmount = fixed (what the merchant receives, matches requested amount)
+    const requiredInput = Number(quote.inAmount) / Math.pow(10, fromToken.decimals);
+    const guaranteedOutput = Number(quote.outAmount) / Math.pow(10, toToken.decimals);
+
     res.status(200).json({
       from: fromToken.symbol,
       to: toToken.symbol,
-      inputAmount: amountNum,
-      outputAmount: Number(quote.outAmount) / Math.pow(10, toToken.decimals),
+      requestedOutput: amountNum,
+      requiredInput,
+      guaranteedOutput,
       priceImpact: quote.priceImpactPct,
       slippageBps: quote.slippageBps,
+      swapMode: 'ExactOut',
       estimatedFee: quote.estimatedFeeInSol,
     });
   } catch (error: any) {
@@ -149,7 +160,7 @@ export async function getNetworkInfo(req: Request, res: Response): Promise<void>
     rpcUrl: rpcUrl ? rpcUrl.replace(/\/\/.*@/, '//***@') : 'not configured', // Hide credentials
     fluxpayWallet: process.env.FLUXPAY_WALLET_PUBLIC_KEY || 'not configured',
     heliusConfigured: !!process.env.HELIUS_API_KEY,
-    jupiterApiUrl: process.env.JUPITER_API_URL || 'https://quote-api.jup.ag/v6',
+    jupiterApiUrl: process.env.JUPITER_API_URL || 'https://api.jup.ag/swap/v2',
     supportedTokens: getAllTokenSymbols(),
   });
 }

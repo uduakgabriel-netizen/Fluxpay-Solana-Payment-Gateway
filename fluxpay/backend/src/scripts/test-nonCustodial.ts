@@ -47,16 +47,19 @@ async function runTests() {
     logger.error(`  ❌ Failed: ${error.message}`);
   }
 
-  // Test 2: Jupiter Quote (SOL → USDC)
-  logger.info('\n─── Test 2: Jupiter Quote (SOL → USDC) ───');
+  // Test 2: Jupiter ExactOut Quote (SOL → USDC)
+  // Amount = desired output: merchant wants 0.01 USDC, Jupiter calculates required SOL input
+  logger.info('\n─── Test 2: Jupiter ExactOut Quote (SOL → USDC) ───');
   try {
     const quote = await getNonCustodialQuote('SOL', 'USDC', 0.01);
     if (quote) {
-      logger.info(`  Input: ${quote.inAmount} SOL (smallest unit)`);
-      logger.info(`  Output: ${quote.outAmount} USDC (smallest unit)`);
+      logger.info(`  SwapMode: ExactOut`);
+      logger.info(`  Merchant wants: 0.01 USDC`);
+      logger.info(`  Buyer must send: ${quote.inAmount} SOL (smallest unit)`);
+      logger.info(`  Merchant receives: ${quote.outAmount} USDC (smallest unit)`);
       logger.info(`  Slippage: ${quote.slippageBps} bps`);
       logger.info(`  Price Impact: ${quote.priceImpactPct}%`);
-      logger.info(`  ✅ Quote received successfully`);
+      logger.info(`  ✅ ExactOut quote received successfully`);
     } else {
       logger.info(`  ❌ No quote returned (Jupiter may be down)`);
     }
@@ -64,8 +67,9 @@ async function runTests() {
     logger.error(`  ❌ Failed: ${error.message}`);
   }
 
-  // Test 3: Build Swap Transaction
-  logger.info('\n─── Test 3: Build Swap Transaction ───');
+  // Test 3: Build ExactOut Swap Transaction
+  // Merchant wants 0.01 USDC, customer pays from SOL
+  logger.info('\n─── Test 3: Build ExactOut Swap Transaction ───');
   try {
     const swapData = await buildSwapTransaction(
       TEST_CUSTOMER_WALLET,

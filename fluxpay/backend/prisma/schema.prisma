@@ -8,25 +8,25 @@ datasource db {
 }
 
 model Merchant {
-  id                      String          @id @default(cuid())
-  walletAddress          String          @unique
-  email                  String?
-  emailVerified          Boolean         @default(false)
-  businessName           String
-  notificationSettings   Json?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
-  hasSelectedToken       Boolean         @default(false)
-  preferredTokenDecimals Int             @default(9)
-  preferredTokenMint     String          @default("So11111111111111111111111111111111111111112")
-  preferredTokenSymbol   String          @default("SOL")
-  preferredTokenUpdatedAt DateTime       @default(now())
+  id                      String   @id @default(cuid())
+  walletAddress           String   @unique
+  email                   String?
+  emailVerified           Boolean  @default(false)
+  businessName            String
+  notificationSettings    Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  hasSelectedToken        Boolean  @default(false)
+  preferredTokenDecimals  Int      @default(9)
+  preferredTokenMint      String   @default("So11111111111111111111111111111111111111112")
+  preferredTokenSymbol    String   @default("SOL")
+  preferredTokenUpdatedAt DateTime @default(now())
 
   // API Key fields
-  apiKeyHash             String?         @unique
-  apiKeyPrefix           String?
-  apiKeyLastChars        String?
-  apiKeyRotatedAt        DateTime?
+  apiKeyHash      String?   @unique
+  apiKeyPrefix    String?
+  apiKeyLastChars String?
+  apiKeyRotatedAt DateTime?
 
   // Webhook fields
   webhookSecret          String?
@@ -34,17 +34,17 @@ model Merchant {
   webhookSecretLastChars String?
   webhookSecretRotatedAt DateTime?
   webhookUrl             String?
-  apiKeys                 ApiKey[]
-  invoices                Invoice[]
-  payments                Payment[]
-  refunds                 Refund[]
-  sessions                Session[]
-  settlements             Settlement[]
-  subscriptions           Subscription[]
-  teamMembers             TeamMember[]
-  webhookConfigs          WebhookConfig[]
-  webhookLogs             WebhookLog[]
-  checkoutSessions        CheckoutSession[]
+  apiKeys                ApiKey[]
+  invoices               Invoice[]
+  payments               Payment[]
+  refunds                Refund[]
+  sessions               Session[]
+  settlements            Settlement[]
+  subscriptions          Subscription[]
+  teamMembers            TeamMember[]
+  webhookConfigs         WebhookConfig[]
+  webhookLogs            WebhookLog[]
+  checkoutSessions       CheckoutSession[]
 
   @@map("merchants")
 }
@@ -171,36 +171,36 @@ model WebhookLog {
 }
 
 model Payment {
-  id               String         @id @default(cuid())
-  merchantId       String
-  amount           Float
-  token            String
-  customerWallet   String?
-  customerEmail    String?
-  metadata         Json?
-  status           PaymentStatus  @default(PENDING)
-  txHash           String?
-  merchantWallet   String?
-  confirmedAt      DateTime?
-  swapRequired     Boolean        @default(false)
-  swappedFrom      String?
-  swappedAmount    Float?
-  swapTxHash       String?
-  swapFee          Float?
-  settled          Boolean        @default(false)
-  settledAt        DateTime?
-  refunded         Boolean        @default(false)
-  refundedAt       DateTime?
-  createdAt        DateTime       @default(now())
-  completedAt      DateTime?
-  expiresAt        DateTime
-  lastSwapError    String?
-  lastSwapRetryAt  DateTime?
-  swapRetries      Int            @default(0)
-  adminAlertSent   Boolean        @default(false)
-  statusHistory    PaymentEvent[]
-  merchant         Merchant       @relation(fields: [merchantId], references: [id])
-  refunds          Refund[]
+  id              String         @id @default(cuid())
+  merchantId      String
+  amount          Float
+  token           String
+  customerWallet  String?
+  customerEmail   String?
+  metadata        Json?
+  status          PaymentStatus  @default(PENDING)
+  txHash          String?
+  merchantWallet  String?
+  confirmedAt     DateTime?
+  swapRequired    Boolean        @default(false)
+  swappedFrom     String?
+  swappedAmount   Float?
+  swapTxHash      String?
+  swapFee         Float?
+  settled         Boolean        @default(false)
+  settledAt       DateTime?
+  refunded        Boolean        @default(false)
+  refundedAt      DateTime?
+  createdAt       DateTime       @default(now())
+  completedAt     DateTime?
+  expiresAt       DateTime
+  lastSwapError   String?
+  lastSwapRetryAt DateTime?
+  swapRetries     Int            @default(0)
+  adminAlertSent  Boolean        @default(false)
+  statusHistory   PaymentEvent[]
+  merchant        Merchant       @relation(fields: [merchantId], references: [id])
+  refunds         Refund[]
 
   @@index([merchantId])
   @@index([status])
@@ -334,24 +334,26 @@ model TeamMember {
 }
 
 model CheckoutSession {
-  id                String                @id @default(cuid())
-  merchantId        String
-  orderId           String?
-  amount            Float
-  token             String                @default("USDC")
-  customerWallet    String?
-  status            CheckoutSessionStatus @default(PENDING)
-  successUrl        String?
-  cancelUrl         String?
-  webhookUrl        String?
-  swapQuote         Json?
-  transactionHash   String?
-  paymentId         String?               @unique
-  errorMessage      String?
-  expiresAt         DateTime
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  merchant          Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  id              String                @id @default(cuid())
+  merchantId      String
+  orderId         String?
+  amount          Float
+  token           String                @default("USDC")
+  customerWallet  String?
+  status          CheckoutSessionStatus @default(PENDING)
+  successUrl      String?
+  cancelUrl       String?
+  webhookUrl      String?
+  swapQuote       Json?
+  transactionHash String?
+  paymentId       String?               @unique
+  inputToken      String?
+  paidAt          DateTime?
+  errorMessage    String?
+  expiresAt       DateTime
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  merchant        Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@index([merchantId])
   @@index([status])

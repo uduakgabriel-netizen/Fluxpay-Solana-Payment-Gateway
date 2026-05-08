@@ -8,15 +8,31 @@
  */
 
 import { PrismaClient, CheckoutSessionStatus } from '@prisma/client';
+import { nanoid } from 'nanoid';
 import { logger } from '../utils/logger';
 import { AppError } from './auth.service';
-import { buildSwapTransaction } from './nonCustodialSwap.service';
+import { getJupiterQuote, buildJupiterSwapTransaction } from './jupiter.service';
 import { deliverWebhook } from '../utils/webhook';
 
 const prisma = new PrismaClient();
 
 const SESSION_EXPIRY_HOURS = 1;
 const CHECKOUT_BASE_URL = process.env.FLUXPAY_CHECKOUT_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
+const JUPITER_QUOTE_URL = process.env.JUPITER_API_URL ? `${process.env.JUPITER_API_URL}/quote` : 'https://api.jup.ag/swap/v2/quote';
+
+// Token info for resolving session token symbols to mint addresses
+const TOKEN_INFO: Record<string, { mint: string; decimals: number }> = {
+  SOL:  { mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
+  USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
+  USDT: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
+  BONK: { mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', decimals: 5 },
+  JUP:  { mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', decimals: 6 },
+  PYTH: { mint: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3', decimals: 6 },
+  WIF:  { mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', decimals: 6 },
+  JTO:  { mint: 'jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL', decimals: 9 },
+  RAY:  { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', decimals: 6 },
+  ORCA: { mint: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE', decimals: 6 },
+};
 
 // ─── Interfaces ─────────────────────────────────────────────
 
@@ -50,6 +66,7 @@ export async function createCheckoutSession(input: CreateCheckoutSessionInput) {
       preferredTokenSymbol: true,
       preferredTokenMint: true,
       preferredTokenDecimals: true,
+      webhookUrl: true,
     },
   });
 
@@ -57,17 +74,43 @@ export async function createCheckoutSession(input: CreateCheckoutSessionInput) {
     throw new AppError('Merchant not found', 404);
   }
 
+  // Idempotency: prevent duplicate sessions for same orderId
+  if (orderId) {
+    const existing = await prisma.checkoutSession.findFirst({
+      where: {
+        merchantId,
+        orderId,
+        status: { in: ['PENDING', 'SWAPPING'] },
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (existing) {
+      logger.info(`Returning existing active session: ${existing.id} for orderId: ${orderId}`);
+      return {
+        id: existing.id,
+        checkoutUrl: `${CHECKOUT_BASE_URL}/pay/${existing.id}`,
+        amount: existing.amount,
+        token: existing.token,
+        status: existing.status,
+        expiresAt: existing.expiresAt.toISOString(),
+      };
+    }
+  }
+
+  const sessionId = nanoid(24);
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
 
   const session = await prisma.checkoutSession.create({
     data: {
+      id: sessionId,
       merchantId,
       orderId: orderId || null,
       amount,
       token: token.toUpperCase(),
       successUrl: successUrl || null,
       cancelUrl: cancelUrl || null,
-      webhookUrl: webhookUrl || null,
+      webhookUrl: webhookUrl || merchant.webhookUrl || null,
       status: 'PENDING',
       expiresAt,
     },
@@ -94,6 +137,7 @@ export async function getCheckoutSession(sessionId: string) {
           businessName: true,
           walletAddress: true,
           preferredTokenSymbol: true,
+          preferredTokenMint: true,
           preferredTokenDecimals: true,
         },
       },
@@ -113,11 +157,18 @@ export async function getCheckoutSession(sessionId: string) {
     throw new AppError('Checkout session has expired', 410);
   }
 
+  // Resolve the session token to a mint address
+  const sessionTokenInfo = TOKEN_INFO[session.token.toUpperCase()];
+  const merchantTokenMint = sessionTokenInfo?.mint || session.merchant.preferredTokenMint;
+  const merchantTokenDecimals = sessionTokenInfo?.decimals ?? session.merchant.preferredTokenDecimals;
+
   return {
     id: session.id,
     merchantName: session.merchant.businessName,
     merchantWallet: session.merchant.walletAddress,
     merchantPreferredToken: session.merchant.preferredTokenSymbol,
+    merchantTokenMint,
+    merchantTokenDecimals,
     orderId: session.orderId,
     amount: session.amount,
     token: session.token,
@@ -163,7 +214,7 @@ export async function getCheckoutSessionStatus(sessionId: string) {
 
 // ─── Execute Payment (after customer connects wallet) ───────
 
-export async function executeCheckoutPayment(sessionId: string, customerWallet: string) {
+export async function executeCheckoutPayment(sessionId: string, customerWallet: string, inputToken: string, inputAmount: number) {
   const session = await prisma.checkoutSession.findUnique({
     where: { id: sessionId },
     include: {
@@ -171,6 +222,7 @@ export async function executeCheckoutPayment(sessionId: string, customerWallet: 
         select: {
           walletAddress: true,
           preferredTokenSymbol: true,
+          preferredTokenMint: true,
           preferredTokenDecimals: true,
         },
       },
@@ -193,63 +245,91 @@ export async function executeCheckoutPayment(sessionId: string, customerWallet: 
     throw new AppError('Checkout session has expired', 410);
   }
 
-  // Update session with customer wallet
-  await prisma.checkoutSession.update({
-    where: { id: sessionId },
-    data: {
-      customerWallet,
-      status: 'AWAITING_PAYMENT',
-    },
-  });
-
-  const customerToken = session.token;
-  const merchantToken = session.merchant.preferredTokenSymbol;
+  // Resolve the merchant's output token mint and decimals
+  const sessionTokenInfo = TOKEN_INFO[session.token.toUpperCase()];
+  const merchantTokenMint = sessionTokenInfo?.mint || session.merchant.preferredTokenMint;
+  const merchantTokenDecimals = sessionTokenInfo?.decimals ?? session.merchant.preferredTokenDecimals;
   const merchantWallet = session.merchant.walletAddress;
 
-  // If customer pays in same token as merchant prefers, build direct transfer
-  // Otherwise build a Jupiter swap transaction
-  const swapNeeded = customerToken !== merchantToken;
+  // Compare MINT ADDRESSES (not symbols) to detect if swap is needed
+  const swapNeeded = inputToken !== merchantTokenMint;
 
   if (swapNeeded) {
-    // Build swap transaction via Jupiter
-    const swapResult = await buildSwapTransaction(
-      customerWallet,
-      merchantWallet,
-      customerToken,
-      merchantToken,
-      session.amount
-    );
+    // Calculate output amount in smallest units for ExactOut quote
+    const outputAmountSmallest = Math.floor(session.amount * Math.pow(10, merchantTokenDecimals));
 
-    if (!swapResult) {
-      await prisma.checkoutSession.update({
-        where: { id: sessionId },
-        data: {
-          status: 'FAILED',
-          errorMessage: 'Failed to build swap transaction. Please try again.',
-        },
-      });
-      throw new AppError('Failed to build swap transaction', 500);
+    // Get ExactOut quote directly from Jupiter — "I need exactly X output, how much input?"
+    const quoteParams = new URLSearchParams({
+      inputMint: inputToken,
+      outputMint: merchantTokenMint,
+      amount: String(outputAmountSmallest),
+      slippageBps: '50',
+      swapMode: 'ExactOut',
+      excludeDexes: 'Pump.fun Amm',
+    });
+
+    logger.info(`[Checkout] Getting ExactOut quote: ${outputAmountSmallest} smallest units of ${session.token}`, {
+      inputMint: inputToken,
+      outputMint: merchantTokenMint,
+    });
+
+    console.log('Jupiter quote request:', { inputMint: inputToken, outputMint: merchantTokenMint, amount: outputAmountSmallest, swapMode: 'ExactOut' });
+
+    const quoteRes = await fetch(`${JUPITER_QUOTE_URL}?${quoteParams}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!quoteRes.ok) {
+      const errBody = await quoteRes.text().catch(() => '');
+      logger.error('[Checkout] Jupiter quote failed:', errBody);
+      throw new AppError('Failed to get swap quote from Jupiter', 422);
     }
 
-    // Store quote in session
+    const quote = (await quoteRes.json()) as any;
+
+    if (!quote || quote.error || !quote.inAmount) {
+      logger.error('[Checkout] Jupiter returned invalid quote:', quote);
+      throw new AppError('No swap route found for this token pair', 422);
+    }
+
+    // Build swap transaction
+    const { transaction, lastValidBlockHeight } = await buildJupiterSwapTransaction({
+      quote,
+      userPublicKey: customerWallet,
+      destinationTokenAccount: merchantWallet,
+    });
+
+    // Lock session
     await prisma.checkoutSession.update({
       where: { id: sessionId },
       data: {
-        swapQuote: swapResult.quote as any,
+        status: 'SWAPPING',
+        customerWallet,
+        inputToken,
+        swapQuote: quote as any,
       },
     });
 
     return {
       sessionId,
-      transaction: swapResult.serializedTransaction,
-      expectedOutput: swapResult.outputAmount,
+      transaction: Buffer.from(transaction.serialize()).toString('base64'),
+      lastValidBlockHeight,
+      expectedOutput: quote.outAmount,
       merchantWallet,
       swapRequired: true,
     };
   }
 
-  // No swap needed — build a direct SPL token transfer or SOL transfer
-  // For direct transfers, the frontend handles the transaction building
+  // No swap needed — direct transfer
+  await prisma.checkoutSession.update({
+    where: { id: sessionId },
+    data: {
+      customerWallet,
+      inputToken,
+      status: 'AWAITING_PAYMENT',
+    },
+  });
+
   return {
     sessionId,
     transaction: null,
@@ -259,7 +339,7 @@ export async function executeCheckoutPayment(sessionId: string, customerWallet: 
     directTransfer: {
       to: merchantWallet,
       amount: session.amount,
-      token: customerToken,
+      token: inputToken,
     },
   };
 }

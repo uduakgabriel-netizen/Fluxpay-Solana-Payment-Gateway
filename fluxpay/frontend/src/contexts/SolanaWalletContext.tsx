@@ -10,8 +10,6 @@ import {
   TorusWalletAdapter,
   LedgerWalletAdapter,
 } from '@solana/wallet-adapter-wallets'
-import { clusterApiUrl } from '@solana/web3.js'
-
 // Default styles that can be overridden by your app
 require('@solana/wallet-adapter-react-ui/styles.css')
 
@@ -20,8 +18,11 @@ interface SolanaWalletProviderProps {
 }
 
 export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ children }) => {
-  const network = 'mainnet-beta' as const
-  const endpoint = useMemo(() => clusterApiUrl(network), [])
+  // Use Helius RPC to avoid 403 rate-limits from the public Solana endpoint
+  const endpoint = useMemo(
+    () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e93742e-974f-47a4-a053-c60784b5c0c5',
+    []
+  )
 
   const wallets = useMemo(
     () => [
