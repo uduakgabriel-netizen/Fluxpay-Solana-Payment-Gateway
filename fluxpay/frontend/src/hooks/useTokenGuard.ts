@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
  * - hasSelectedToken is FALSE (new merchant)
  * - Not already on the token selection page
  */
+
 export function useTokenGuard() {
   const router = useRouter();
   const { merchant, loading } = useAuth();
