@@ -10,15 +10,18 @@ import {
   TorusWalletAdapter,
   LedgerWalletAdapter,
 } from '@solana/wallet-adapter-wallets'
-// Default styles that can be overridden by your app
 require('@solana/wallet-adapter-react-ui/styles.css')
+
+// Cast to any to bypass the ReactNode/bigint incompatibility
+const Connection = ConnectionProvider as any
+const Wallet = WalletProvider as any
+const WalletModal = WalletModalProvider as any
 
 interface SolanaWalletProviderProps {
   children: React.ReactNode
 }
 
 export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ children }) => {
-  // Use Helius RPC to avoid 403 rate-limits from the public Solana endpoint
   const endpoint = useMemo(
     () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e93742e-974f-47a4-a053-c60784b5c0c5',
     []
@@ -35,12 +38,12 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
   )
 
   return (
-    <ConnectionProvider endpoint={endpoint} {...({} as any)}>
-      <WalletProvider wallets={wallets} autoConnect {...({} as any)}>
-        <WalletModalProvider {...({} as any)}>
+    <Connection endpoint={endpoint}>
+      <Wallet wallets={wallets} autoConnect>
+        <WalletModal>
           {children}
-        </WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+        </WalletModal>
+      </Wallet>
+    </Connection>
   )
 }
