@@ -8,7 +8,7 @@ import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
   TorusWalletAdapter,
-  LedgerWalletAdapter,
+  // LedgerWalletAdapter,
 } from '@solana/wallet-adapter-wallets'
 require('@solana/wallet-adapter-react-ui/styles.css')
 
@@ -32,7 +32,7 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
       new TorusWalletAdapter(),
-      new LedgerWalletAdapter(),
+      // new LedgerWalletAdapter(),
     ],
     []
   )
