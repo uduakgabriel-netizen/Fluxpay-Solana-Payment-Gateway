@@ -285,7 +285,7 @@ export default function CheckoutPage() {
         const txBuffer = Buffer.from(orderData.transaction, 'base64');
 
         try {
-          const vTx = VersionedTransaction.deserialize(txBuffer);
+          const vTx = VersionedTransaction.deserialize(new Uint8Array(txBuffer));
           signature = await sendTransaction(vTx, connection);
         } catch (deserErr) {
           console.warn('[FluxPay] VersionedTransaction failed, trying legacy:', deserErr);
@@ -330,7 +330,7 @@ export default function CheckoutPage() {
           setPaymentState('confirming');
           const txBuffer = Buffer.from(execData.transaction, 'base64');
           try {
-            const vTx = VersionedTransaction.deserialize(txBuffer);
+            const vTx = VersionedTransaction.deserialize(new Uint8Array(txBuffer));
             signature = await sendTransaction(vTx, connection);
           } catch {
             const tx = Transaction.from(txBuffer);
