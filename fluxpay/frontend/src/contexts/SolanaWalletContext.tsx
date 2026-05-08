@@ -35,9 +35,9 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
   )
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>
+    <ConnectionProvider endpoint={endpoint} {...({} as any)}>
+      <WalletProvider wallets={wallets} autoConnect {...({} as any)}>
+        <WalletModalProvider {...({} as any)}>
           {children}
         </WalletModalProvider>
       </WalletProvider>
