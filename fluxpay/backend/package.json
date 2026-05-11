@@ -31,7 +31,8 @@
     "tweetnacl": "^1.0.3",
     "uuid": "^14.0.0",
     "winston": "^3.19.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "nanoid": "^5.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
