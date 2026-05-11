@@ -395,9 +395,11 @@ export async function buildJupiterSwapTransaction({ quote, userPublicKey, destin
 }
 
 // ─────────────────────────────────────────────
-// getTokenBalances
+// getTokenBalances (with SOL buffer awareness)
 // ─────────────────────────────────────────────
 import { Connection } from '@solana/web3.js';
+import { calculateSolBuffer } from '../utils/sol-buffer';
+
 const RPC_ENDPOINT = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 export async function getTokenBalances(walletAddress: string) {
@@ -406,6 +408,18 @@ export async function getTokenBalances(walletAddress: string) {
   try {
     const pubKey = new PublicKey(walletAddress);
     const solBalance = await connection.getBalance(pubKey);
+
+    // Calculate SOL buffer so consumers know the actual swappable amount
+    let solBuffer = 0;
+    try {
+      const bufferResult = await calculateSolBuffer();
+      solBuffer = bufferResult.totalBufferLamports;
+    } catch (err) {
+      logger.warn('[Jupiter] Failed to calculate SOL buffer for getTokenBalances:', err);
+      solBuffer = 5_000_000; // fallback: 0.005 SOL
+    }
+
+    const maxSwapLamports = Math.max(0, solBalance - solBuffer);
 
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
       pubKey,
@@ -419,6 +433,9 @@ export async function getTokenBalances(walletAddress: string) {
         amount: solBalance,
         uiAmount: solBalance / 1e9,
         decimals: 9,
+        maxSwapAmount: maxSwapLamports,         // lamports available for swap
+        maxSwapUiAmount: maxSwapLamports / 1e9,  // SOL available for swap
+        bufferReserved: solBuffer / 1e9,         // SOL reserved for fees
       },
     ];
 
@@ -431,6 +448,9 @@ export async function getTokenBalances(walletAddress: string) {
           amount: info.tokenAmount.amount,
           uiAmount: info.tokenAmount.uiAmount,
           decimals: info.tokenAmount.decimals,
+          maxSwapAmount: info.tokenAmount.amount,   // Non-SOL tokens can be fully swapped
+          maxSwapUiAmount: info.tokenAmount.uiAmount,
+          bufferReserved: 0,
         });
       }
     }

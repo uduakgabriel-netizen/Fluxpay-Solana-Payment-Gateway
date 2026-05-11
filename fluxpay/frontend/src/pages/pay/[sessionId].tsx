@@ -4,13 +4,19 @@ import Head from 'next/head';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { Transaction, VersionedTransaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Shield } from 'lucide-react';
 import { CheckCircle2, XCircle, Loader2, ArrowRight, Wallet, ExternalLink, Clock, Zap, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TokenSelector, { Token } from '../../components/TokenSelector';
 
 const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-  ? 'http://localhost:5000/api'
-  : 'https://api.fluxpay.com/api';
+  ? (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : 'http://localhost:5000/api')
+  : '/api';
+
+// Jupiter API URL — configurable via env var, NOT hardcoded to mainnet
+const JUPITER_API_URL = process.env.NEXT_PUBLIC_JUPITER_API_URL || 'https://api.jup.ag/swap/v2';
+const SOLANA_NETWORK = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'mainnet-beta';
+const IS_DEVNET = SOLANA_NETWORK === 'devnet';
 
 interface SessionData {
   id: string;
@@ -61,6 +67,12 @@ export default function CheckoutPage() {
   const [quoteReady, setQuoteReady] = useState(false);
   const [jupiterQuote, setJupiterQuote] = useState<any>(null); // Store full quote for swap
 
+  // SOL Buffer State — reserves SOL for transaction fees
+  const [solBalance, setSolBalance] = useState<number | null>(null); // in SOL
+  const [solBufferAmount, setSolBufferAmount] = useState<number>(0.005); // default buffer
+  const [solBufferLoading, setSolBufferLoading] = useState(false);
+  const [insufficientSolForFees, setInsufficientSolForFees] = useState(false);
+
   // Fetch Session
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -106,6 +118,51 @@ export default function CheckoutPage() {
     }
   }, [session]);
 
+  // ─── Fetch SOL Balance & Buffer when wallet connects ───
+  useEffect(() => {
+    if (!publicKey || !connected) {
+      setSolBalance(null);
+      setInsufficientSolForFees(false);
+      return;
+    }
+
+    async function fetchSolBalanceAndBuffer() {
+      setSolBufferLoading(true);
+      try {
+        // Fetch SOL balance from the connected wallet
+        const balanceLamports = await connection.getBalance(publicKey!);
+        const balanceSol = balanceLamports / LAMPORTS_PER_SOL;
+        setSolBalance(balanceSol);
+
+        // Fetch the dynamic buffer from backend
+        try {
+          const bufferRes = await fetch(`${API_BASE}/blockchain/sol-buffer?walletAddress=${publicKey!.toBase58()}`);
+          if (bufferRes.ok) {
+            const bufferData = await bufferRes.json();
+            setSolBufferAmount(bufferData.buffer?.totalBufferSol || 0.005);
+
+            // Check if wallet has enough SOL for fees
+            if (bufferData.wallet?.hasSufficientSolForFees === false) {
+              setInsufficientSolForFees(true);
+            } else {
+              setInsufficientSolForFees(false);
+            }
+          }
+        } catch (bufferErr) {
+          console.warn('[FluxPay] Could not fetch SOL buffer from backend, using default:', bufferErr);
+          // Use default buffer and check locally
+          setInsufficientSolForFees(balanceSol < 0.005);
+        }
+      } catch (err) {
+        console.error('[FluxPay] Failed to fetch SOL balance:', err);
+      } finally {
+        setSolBufferLoading(false);
+      }
+    }
+
+    fetchSolBalanceAndBuffer();
+  }, [publicKey, connected, connection]);
+
   // Fetch Quote — calls Jupiter Swap API V2 directly from the browser
   useEffect(() => {
     async function fetchQuote() {
@@ -122,6 +179,47 @@ export default function CheckoutPage() {
         return;
       }
 
+      // Devnet: Jupiter swap is not available, but we still need real price conversion.
+      // Use Jupiter's price API (network-agnostic) to get real SOL/USDC rate.
+      if (IS_DEVNET) {
+        try {
+          setIsQuoting(true);
+          console.log('[FluxPay] Devnet mode: Fetching real SOL price for conversion...');
+          
+          const SOL_MINT = 'So11111111111111111111111111111111111111112';
+          const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+          
+          // Jupiter Price API returns real mainnet market price
+          const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${SOL_MINT}&vsToken=${USDC_MINT}`);
+          const priceData = await priceRes.json();
+          const solPriceInUsdc = Number(priceData?.data?.[SOL_MINT]?.price);
+          
+          if (solPriceInUsdc && solPriceInUsdc > 0) {
+            // Convert: how much SOL = this many USDC?
+            const solAmount = session.amount / solPriceInUsdc;
+            console.log(`[FluxPay] Devnet price: 1 SOL = $${solPriceInUsdc} USDC → ${session.amount} USDC = ${solAmount.toFixed(6)} SOL`);
+            setInputAmount(solAmount);
+            setQuoteError(null);
+            setQuoteReady(true);
+            setJupiterQuote(null); // No Jupiter swap tx on devnet
+          } else {
+            throw new Error('Could not fetch SOL price');
+          }
+        } catch (priceErr) {
+          console.warn('[FluxPay] Devnet price fetch failed, using fallback:', priceErr);
+          // Fallback: use a reasonable estimate
+          const fallbackSolPrice = 170; // ~$170 USDC per SOL
+          const solAmount = session.amount / fallbackSolPrice;
+          setInputAmount(solAmount);
+          setQuoteError(null);
+          setQuoteReady(true);
+          setJupiterQuote(null);
+        } finally {
+          setIsQuoting(false);
+        }
+        return;
+      }
+
       try {
         setIsQuoting(true);
         setQuoteError(null);
@@ -130,14 +228,30 @@ export default function CheckoutPage() {
         const outAmountLamports = Math.floor(session.amount * Math.pow(10, outDecimals));
         const outputMint = session.merchantTokenMint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
+        // ─── SOL Buffer Check ─────────────────────────────────
+        // Every swap transaction requires SOL for network fees.
+        // If the customer is paying WITH SOL, we also need to ensure
+        // they keep enough SOL in their wallet for the transaction fee.
+        const isPayingWithSol = selectedToken.mint === 'So11111111111111111111111111111111111111112';
+
+        if (publicKey && solBalance !== null) {
+          // Check 1: Does the wallet have enough SOL for transaction fees? (applies to ALL tokens)
+          if (solBalance < solBufferAmount && !isPayingWithSol) {
+            setQuoteError(`You need at least ${solBufferAmount.toFixed(4)} SOL in your wallet for transaction fees. Current SOL balance: ${solBalance.toFixed(4)} SOL.`);
+            setInputAmount(null);
+            setIsQuoting(false);
+            return;
+          }
+        }
+
         // Use Jupiter /order endpoint because /build does not properly support ExactOut mode.
-        // We use this for quoting even though it might return 'Insufficient funds' for the taker.
-        const quoteUrl = `https://api.jup.ag/swap/v2/order?inputMint=${selectedToken.mint}&outputMint=${outputMint}&amount=${outAmountLamports}&swapMode=ExactOut&slippageBps=50&taker=${publicKey?.toBase58() || '11111111111111111111111111111111'}`;
-        
-        console.log('[FluxPay] Fetching Jupiter quote (order endpoint):', { inputMint: selectedToken.mint, outputMint, amount: outAmountLamports, swapMode: 'ExactOut' });
-        
+        // URL comes from env var — NOT hardcoded to mainnet
+        const quoteUrl = `${JUPITER_API_URL}/order?inputMint=${selectedToken.mint}&outputMint=${outputMint}&amount=${outAmountLamports}&swapMode=ExactOut&slippageBps=50&wrapAndUnwrapSol=true&taker=${publicKey?.toBase58() || '11111111111111111111111111111111'}`;
+
+        console.log('[FluxPay] Fetching Jupiter quote (order endpoint):', { inputMint: selectedToken.mint, outputMint, amount: outAmountLamports, swapMode: 'ExactOut', solBuffer: solBufferAmount });
+
         const res = await fetch(quoteUrl);
-        
+
         if (!res.ok) {
           const errText = await res.text().catch(() => '');
           console.error('[FluxPay] Jupiter API error:', res.status, errText);
@@ -155,12 +269,25 @@ export default function CheckoutPage() {
         const hasValidAmount = quote && quote.inAmount;
 
         if (hasValidAmount && (!quote.error || isInsufficientFunds)) {
-          setInputAmount(Number(quote.inAmount) / Math.pow(10, selectedToken.decimals));
+          const quoteInputAmount = Number(quote.inAmount) / Math.pow(10, selectedToken.decimals);
+          setInputAmount(quoteInputAmount);
           setJupiterQuote(quote); // Store for swap execution
           setQuoteReady(true);
-          
-          if (isInsufficientFunds && publicKey) {
-            setQuoteError(`Insufficient ${selectedToken.symbol} balance. You need more to complete this payment.`);
+
+          // ─── SOL Buffer Validation ─────────────────────────
+          if (isPayingWithSol && publicKey && solBalance !== null) {
+            // When paying with SOL: inputAmount + buffer must be <= solBalance
+            const totalRequired = quoteInputAmount + solBufferAmount;
+            if (totalRequired > solBalance) {
+              const maxSwap = Math.max(0, solBalance - solBufferAmount);
+              setQuoteError(
+                `Insufficient SOL balance. You need ~${quoteInputAmount.toFixed(4)} SOL for the payment plus ~${solBufferAmount.toFixed(4)} SOL reserved for fees (total: ~${totalRequired.toFixed(4)} SOL). Your balance: ${solBalance.toFixed(4)} SOL. Max you can swap: ~${maxSwap.toFixed(4)} SOL.`
+              );
+            } else {
+              setQuoteError(null);
+            }
+          } else if (isInsufficientFunds && publicKey) {
+            setQuoteError(`Insufficient ${selectedToken.symbol} balance. You need ~${quoteInputAmount.toFixed(4)} ${selectedToken.symbol} to complete this payment.`);
           } else {
             setQuoteError(null);
           }
@@ -183,7 +310,7 @@ export default function CheckoutPage() {
       }
     }
     fetchQuote();
-  }, [session, selectedToken, publicKey]);
+  }, [session, selectedToken, publicKey, solBalance, solBufferAmount]);
 
   // Status Polling
   useEffect(() => {
@@ -237,19 +364,59 @@ export default function CheckoutPage() {
 
       const swapNeeded = selectedToken.mint !== session.merchantTokenMint && selectedToken.symbol !== session.token;
 
+      // ─── Pre-flight SOL Buffer Check ────────────────────
+      // Verify the wallet still has enough SOL for fees before executing
+      if (swapNeeded && publicKey) {
+        try {
+          const currentBalance = await connection.getBalance(publicKey);
+          const currentBalanceSol = currentBalance / LAMPORTS_PER_SOL;
+          const isPayingWithSol = selectedToken.mint === 'So11111111111111111111111111111111111111112';
+
+          if (isPayingWithSol && inputAmount) {
+            const totalNeeded = inputAmount + solBufferAmount;
+            if (totalNeeded > currentBalanceSol) {
+              throw new Error(`Insufficient SOL. Need ~${totalNeeded.toFixed(4)} SOL (${inputAmount.toFixed(4)} payment + ${solBufferAmount.toFixed(4)} fees), but wallet has ${currentBalanceSol.toFixed(4)} SOL.`);
+            }
+          } else if (currentBalanceSol < solBufferAmount) {
+            throw new Error(`Insufficient SOL for transaction fees. Need ~${solBufferAmount.toFixed(4)} SOL for fees, but wallet has ${currentBalanceSol.toFixed(4)} SOL. The fee stays in your wallet.`);
+          }
+        } catch (balErr: any) {
+          if (balErr.message.includes('Insufficient')) throw balErr;
+          console.warn('[FluxPay] Pre-flight balance check failed:', balErr);
+        }
+      }
+
       let signature = '';
 
       if (swapNeeded && jupiterQuote) {
         // ─── SWAP PATH: Use Jupiter /order endpoint for best pricing ───
-        console.log('[FluxPay] Getting swap order from Jupiter...');
+        console.log('[FluxPay] Starting swap flow...');
 
         const outDecimals = session.merchantTokenDecimals || 6;
         const outAmountLamports = Math.floor(session.amount * Math.pow(10, outDecimals));
         const outputMint = session.merchantTokenMint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
-        // 1. Call Jupiter /order to get a pre-built transaction with best routing
-        const orderUrl = `https://api.jup.ag/swap/v2/order?inputMint=${selectedToken.mint}&outputMint=${outputMint}&amount=${outAmountLamports}&swapMode=ExactOut&slippageBps=50&taker=${publicKey.toBase58()}`;
-        
+        // 1. Call backend /execute FIRST — this pre-creates ATAs (Fix 2)
+        //    The backend ensures both merchant and customer have token accounts
+        //    for the output token before Jupiter builds the transaction.
+        console.log('[FluxPay] Step 1: Calling backend to ensure token accounts exist...');
+        await fetch(`${API_BASE}/checkout/sessions/${sessionId}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            buyerWallet: publicKey.toBase58(),
+            inputToken: selectedToken.mint,
+            inputAmount: inputAmount,
+          }),
+        }).catch((err) => {
+          console.warn('[FluxPay] Backend execute call failed (non-fatal):', err);
+        });
+
+        // 2. Call Jupiter /order to get a pre-built transaction with best routing
+        //    URL from env var, wrapAndUnwrapSol=true for SOL handling
+        console.log('[FluxPay] Step 2: Getting swap order from Jupiter...');
+        const orderUrl = `${JUPITER_API_URL}/order?inputMint=${selectedToken.mint}&outputMint=${outputMint}&amount=${outAmountLamports}&swapMode=ExactOut&slippageBps=50&wrapAndUnwrapSol=true&taker=${publicKey.toBase58()}`;
+
         const orderRes = await fetch(orderUrl);
 
         if (!orderRes.ok) {
@@ -259,26 +426,19 @@ export default function CheckoutPage() {
         }
 
         const orderData = await orderRes.json();
-        
+
         if (!orderData.transaction) {
+          // Check if Jupiter returned an error about insufficient funds or missing accounts
+          if (orderData.error) {
+            throw new Error(`Jupiter swap error: ${typeof orderData.error === 'string' ? orderData.error : JSON.stringify(orderData.error)}`);
+          }
           throw new Error('Jupiter returned no transaction');
         }
 
-        console.log('[FluxPay] Swap order received, requesting wallet signature...', {
+        console.log('[FluxPay] Step 3: Swap order received, requesting wallet signature...', {
           inAmount: orderData.inAmount,
           outAmount: orderData.outAmount,
         });
-
-        // 2. Notify backend that swap is in progress
-        await fetch(`${API_BASE}/checkout/sessions/${sessionId}/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            buyerWallet: publicKey.toBase58(),
-            inputToken: selectedToken.mint,
-            inputAmount: inputAmount,
-          }),
-        }).catch(() => {}); // Non-critical, just for status tracking
 
         // 3. Deserialize and sign the transaction
         setPaymentState('confirming');
@@ -293,10 +453,38 @@ export default function CheckoutPage() {
           signature = await sendTransaction(tx, connection);
         }
 
+      } else if (swapNeeded && !jupiterQuote && IS_DEVNET) {
+        // ─── DEVNET FALLBACK: Direct SOL transfer instead of Jupiter swap ───
+        console.log('[FluxPay] Devnet mode: Direct SOL transfer to merchant');
+
+        // Notify backend
+        await fetch(`${API_BASE}/checkout/sessions/${sessionId}/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            buyerWallet: publicKey.toBase58(),
+            inputToken: selectedToken.mint,
+            inputAmount: inputAmount,
+          }),
+        }).catch(() => {});
+
+        // Build a direct SOL transfer to merchant wallet
+        const lamportsToSend = Math.floor((inputAmount || session.amount) * LAMPORTS_PER_SOL);
+        const transferTx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: new PublicKey(session.merchantWallet),
+            lamports: lamportsToSend,
+          })
+        );
+
+        setPaymentState('confirming');
+        signature = await sendTransaction(transferTx, connection);
+
       } else {
         // ─── DIRECT TRANSFER PATH: Same token, no swap needed ───
         console.log('[FluxPay] Direct transfer (no swap needed)');
-        
+
         const execRes = await fetch(`${API_BASE}/checkout/sessions/${sessionId}/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -370,11 +558,8 @@ export default function CheckoutPage() {
         setPaymentState('idle');
         return;
       }
-      if (err.message?.includes('Insufficient')) {
-        setError(`Insufficient ${selectedToken.symbol} balance. You need approximately ${inputAmount?.toFixed(4)} ${selectedToken.symbol}.`);
-      } else {
-        setError(err.message || 'Payment failed');
-      }
+      // Show the actual error from Jupiter/Solana — don't transform it
+      setError(err.message || 'Payment failed');
       setPaymentState('failed');
     }
   };
@@ -507,6 +692,19 @@ export default function CheckoutPage() {
                 </div>
               )}
 
+              {/* SOL Fee Buffer Info */}
+              {connected && publicKey && selectedToken && session?.merchantTokenMint !== selectedToken.mint && session?.token !== selectedToken.symbol && !quoteError && solBalance !== null && (
+                <div className="flex items-start space-x-2 text-xs text-gray-400 bg-white/[0.03] p-3 rounded-xl border border-white/5">
+                  <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 text-gray-500" />
+                  <p>
+                    ~{solBufferAmount.toFixed(4)} SOL reserved for network fees (stays in your wallet).
+                    {solBalance !== null && (
+                      <span className="text-gray-500"> SOL balance: {solBalance.toFixed(4)}</span>
+                    )}
+                  </p>
+                </div>
+              )}
+
               {quoteError && (
                 <div className="flex items-start space-x-2 text-xs text-red-300 bg-red-500/10 p-3 rounded-xl border border-red-500/20">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -528,7 +726,7 @@ export default function CheckoutPage() {
                     <p className="text-gray-400 text-sm">Transaction confirmed on Solana.</p>
                   </div>
                   {txSignature && (
-                    <a href={`https://solscan.io/tx/${txSignature}?cluster=devnet`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center space-x-2 text-sm text-indigo-400 hover:text-indigo-300 bg-white/5 w-full py-3 rounded-xl border border-white/10 transition-colors">
+                    <a href={`https://solscan.io/tx/${txSignature}${(process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet') === 'devnet' ? '?cluster=devnet' : ''}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center space-x-2 text-sm text-indigo-400 hover:text-indigo-300 bg-white/5 w-full py-3 rounded-xl border border-white/10 transition-colors">
                       <span className="truncate max-w-[200px] font-mono text-xs">{txSignature}</span>
                       <ExternalLink className="w-4 h-4" />
                     </a>
@@ -637,7 +835,7 @@ export default function CheckoutPage() {
                         ) : (
                           <button
                             onClick={executePayment}
-                            disabled={isQuoting || !quoteReady || !!quoteError || !inputAmount}
+                            disabled={isQuoting || !quoteReady || !!quoteError || !inputAmount || insufficientSolForFees || solBufferLoading}
                             className="w-full bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] text-white py-4 rounded-xl font-bold text-lg hover:from-indigo-600 hover:to-purple-600 transition-all shadow-lg shadow-indigo-500/25 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed group"
                           >
                             {isQuoting ? (

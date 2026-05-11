@@ -12,6 +12,7 @@ import {
   getTransaction,
   getQuote,
   getNetworkInfo,
+  getSolBuffer,
 } from '../controllers/blockchain.controller';
 
 const router = Router();
@@ -19,6 +20,7 @@ const router = Router();
 // Public routes (no auth needed)
 router.get('/tokens', getSupportedTokens);
 router.get('/network', getNetworkInfo);
+router.get('/sol-buffer', getSolBuffer);
 
 // Authenticated routes
 router.get('/balance/:address', requireAuthOrApiKey, getBalance);

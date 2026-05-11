@@ -23,7 +23,16 @@ interface SolanaWalletProviderProps {
 
 export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ children }) => {
   const endpoint = useMemo(
-    () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=5e93742e-974f-47a4-a053-c60784b5c0c5',
+    () => {
+      if (process.env.NEXT_PUBLIC_SOLANA_RPC_URL) {
+        return process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+      }
+      // Fallback: use network env var to pick the right RPC
+      const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'mainnet-beta';
+      return network === 'devnet'
+        ? 'https://api.devnet.solana.com'
+        : 'https://mainnet.helius-rpc.com/?api-key=5e93742e-974f-47a4-a053-c60784b5c0c5';
+    },
     []
   )
 

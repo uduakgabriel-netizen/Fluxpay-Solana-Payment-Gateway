@@ -29,6 +29,7 @@ import { PrismaClient } from '@prisma/client';
 import { getMintAddress, getTokenBySymbol } from '../utils/token-registry';
 import { getConnection, withFailover } from '../config/solana';
 import { AlertService } from './alert.service';
+import { ensureTokenAccountExists } from '../utils/ensure-token-account';
 
 const prisma = new PrismaClient();
 
@@ -241,14 +242,35 @@ export async function buildSwapTransaction(
 
   logger.info(`[NonCustodial] ExactOut quote: buyer sends ~${inputAmountHuman} ${fromToken}, merchant receives ${outputAmount} ${toToken}`);
 
-  // 2. Build swap transaction with non-custodial parameters
+  // 2. Pre-create ATAs if needed (Fix 2: prevents Jupiter error 6024)
+  try {
+    const resolvedOutputMint = getMintAddress(toToken);
+    if (resolvedOutputMint) {
+      const gasWallet = loadFluxPayGasWallet();
+
+      // Ensure merchant has ATA for the output token
+      const merchantATAResult = await ensureTokenAccountExists(
+        merchantWallet,
+        resolvedOutputMint,
+        gasWallet
+      );
+      if (merchantATAResult.created) {
+        logger.info(`[NonCustodial] Created merchant ATA for ${toToken} (tx: ${merchantATAResult.txSignature})`);
+      }
+    }
+  } catch (ataErr: any) {
+    // Non-fatal: Jupiter may handle via useSharedAccounts
+    logger.warn(`[NonCustodial] ATA pre-creation failed (non-fatal): ${ataErr.message}`);
+  }
+
+  // 3. Build swap transaction with non-custodial parameters
   try {
     const swapRequestBody: any = {
       quoteResponse: quote,
       userPublicKey: customerWallet,           // Customer pays from here
       destinationTokenAccount: merchantWallet, // Merchant receives here
       useSharedAccounts: true,                 // Auto-create ATA if missing
-      wrapAndUnwrapSol: true,
+      wrapAndUnwrapSol: true,                  // Fix 1: Handle SOL wrapping
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 'auto',
     };

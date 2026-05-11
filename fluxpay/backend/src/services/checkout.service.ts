@@ -9,10 +9,13 @@
 
 import { PrismaClient, CheckoutSessionStatus } from '@prisma/client';
 import { nanoid } from 'nanoid';
+import { Keypair } from '@solana/web3.js';
 import { logger } from '../utils/logger';
 import { AppError } from './auth.service';
 import { getJupiterQuote, buildJupiterSwapTransaction } from './jupiter.service';
 import { deliverWebhook } from '../utils/webhook';
+import { calculateSolBuffer } from '../utils/sol-buffer';
+import { ensureTokenAccountExists } from '../utils/ensure-token-account';
 
 const prisma = new PrismaClient();
 
@@ -162,6 +165,20 @@ export async function getCheckoutSession(sessionId: string) {
   const merchantTokenMint = sessionTokenInfo?.mint || session.merchant.preferredTokenMint;
   const merchantTokenDecimals = sessionTokenInfo?.decimals ?? session.merchant.preferredTokenDecimals;
 
+  // Calculate SOL buffer for fee reservation
+  let solBufferInfo = null;
+  try {
+    const buffer = await calculateSolBuffer();
+    solBufferInfo = {
+      totalBufferSol: buffer.totalBufferSol,
+      rentExemptionSol: buffer.rentExemptionSol,
+      networkFeeSol: buffer.networkFeeSol,
+      priorityFeeSol: buffer.priorityFeeSol,
+    };
+  } catch (err) {
+    logger.warn('[Checkout] Failed to calculate SOL buffer:', err);
+  }
+
   return {
     id: session.id,
     merchantName: session.merchant.businessName,
@@ -178,6 +195,7 @@ export async function getCheckoutSession(sessionId: string) {
     successUrl: session.successUrl,
     cancelUrl: session.cancelUrl,
     errorMessage: session.errorMessage,
+    solBuffer: solBufferInfo,
     expiresAt: session.expiresAt.toISOString(),
     createdAt: session.createdAt.toISOString(),
   };
@@ -290,6 +308,50 @@ export async function executeCheckoutPayment(sessionId: string, customerWallet: 
     if (!quote || quote.error || !quote.inAmount) {
       logger.error('[Checkout] Jupiter returned invalid quote:', quote);
       throw new AppError('No swap route found for this token pair', 422);
+    }
+
+    // ─── Fix 2: Pre-create merchant ATA before swap ─────────
+    // Jupiter error 6024 occurs when the merchant wallet has never
+    // held the output token. FluxPay sponsors the ~0.002 SOL rent.
+    try {
+      const gasWalletKey = process.env.FLUXPAY_WALLET_PRIVATE_KEY;
+      if (gasWalletKey) {
+        let gasKeypair: Keypair;
+        try {
+          if (gasWalletKey.startsWith('[')) {
+            gasKeypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(gasWalletKey)));
+          } else if (gasWalletKey.length > 100) {
+            gasKeypair = Keypair.fromSecretKey(new Uint8Array(Buffer.from(gasWalletKey, 'base64')));
+          } else {
+            gasKeypair = Keypair.fromSecretKey(new Uint8Array(Buffer.from(gasWalletKey, 'hex')));
+          }
+
+          // Ensure merchant has ATA for the output token they will receive
+          const merchantATAResult = await ensureTokenAccountExists(
+            merchantWallet,
+            merchantTokenMint,
+            gasKeypair
+          );
+          if (merchantATAResult.created) {
+            logger.info(`[Checkout] Created merchant ATA for ${session.token} (tx: ${merchantATAResult.txSignature})`);
+          }
+
+          // Ensure customer has ATA for the output token (Jupiter may need it for intermediate routing)
+          const customerATAResult = await ensureTokenAccountExists(
+            customerWallet,
+            merchantTokenMint,
+            gasKeypair
+          );
+          if (customerATAResult.created) {
+            logger.info(`[Checkout] Created customer ATA for ${session.token} (tx: ${customerATAResult.txSignature})`);
+          }
+        } catch (keyErr: any) {
+          logger.warn(`[Checkout] Could not load gas wallet for ATA creation: ${keyErr.message}`);
+        }
+      }
+    } catch (ataErr: any) {
+      // Non-fatal: Jupiter may still handle ATA creation via useSharedAccounts
+      logger.warn(`[Checkout] ATA pre-creation failed (non-fatal): ${ataErr.message}`);
     }
 
     // Build swap transaction

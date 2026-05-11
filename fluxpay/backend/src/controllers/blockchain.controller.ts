@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
  * - Verify transactions
  * - Get swap quotes
  * - Get supported tokens
+ * - Get SOL buffer for fee reservation
  */
 
 import { Request, Response } from 'express';
@@ -14,6 +15,9 @@ import { AuthRequest } from '../types/auth.types';
 import { getWalletBalance, verifyTransaction } from '../services/solana-wallet.service';
 import { getSwapQuote } from '../services/jupiter.service';
 import { TOKEN_REGISTRY, getAllTokenSymbols, getTokenBySymbol } from '../utils/token-registry';
+import { calculateSolBuffer, getMaxSwapAmountSol, hasEnoughSolForFees } from '../utils/sol-buffer';
+import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { getConnection } from '../config/solana';
 
 /**
  * GET /api/blockchain/tokens
@@ -128,6 +132,9 @@ export async function getQuote(req: AuthRequest, res: Response): Promise<void> {
     const requiredInput = Number(quote.inAmount) / Math.pow(10, fromToken.decimals);
     const guaranteedOutput = Number(quote.outAmount) / Math.pow(10, toToken.decimals);
 
+    // Include SOL buffer info so frontend knows how much SOL to reserve for fees
+    const buffer = await calculateSolBuffer();
+
     res.status(200).json({
       from: fromToken.symbol,
       to: toToken.symbol,
@@ -138,10 +145,74 @@ export async function getQuote(req: AuthRequest, res: Response): Promise<void> {
       slippageBps: quote.slippageBps,
       swapMode: 'ExactOut',
       estimatedFee: quote.estimatedFeeInSol,
+      solBuffer: {
+        totalBufferSol: buffer.totalBufferSol,
+        rentExemptionSol: buffer.rentExemptionSol,
+        networkFeeSol: buffer.networkFeeSol,
+        priorityFeeSol: buffer.priorityFeeSol,
+      },
     });
   } catch (error: any) {
     logger.error('[Blockchain] Swap quote error:', error);
     res.status(500).json({ error: 'Failed to get swap quote' });
+  }
+}
+
+/**
+ * GET /api/blockchain/sol-buffer
+ * Get the current SOL buffer required for swap transactions.
+ *
+ * Optional query param: walletAddress — if provided, also returns
+ * the max swappable SOL amount and whether the wallet has enough for fees.
+ */
+export async function getSolBuffer(req: Request, res: Response): Promise<void> {
+  try {
+    const { walletAddress } = req.query;
+    const buffer = await calculateSolBuffer();
+
+    const response: any = {
+      buffer: {
+        totalBufferSol: buffer.totalBufferSol,
+        totalBufferLamports: buffer.totalBufferLamports,
+        rentExemptionSol: buffer.rentExemptionSol,
+        networkFeeSol: buffer.networkFeeSol,
+        priorityFeeSol: buffer.priorityFeeSol,
+        safetyMarginSol: buffer.safetyMarginSol,
+      },
+      description: 'SOL reserved for transaction fees. This is NOT an extra charge — it stays in the customer wallet.',
+    };
+
+    // If a wallet address was provided, also check its balance
+    if (walletAddress && typeof walletAddress === 'string' && walletAddress.length >= 32) {
+      try {
+        const connection = getConnection();
+        const pubkey = new PublicKey(walletAddress);
+        const balanceLamports = await connection.getBalance(pubkey);
+        const balanceSol = balanceLamports / LAMPORTS_PER_SOL;
+
+        const { maxSwapAmountSol, sufficient } = await getMaxSwapAmountSol(balanceLamports);
+        const feeCheck = await hasEnoughSolForFees(balanceLamports);
+
+        response.wallet = {
+          address: walletAddress,
+          balanceSol,
+          balanceLamports,
+          maxSwapAmountSol,
+          hasSufficientSolForFees: feeCheck.sufficient,
+          shortfallSol: feeCheck.shortfall,
+        };
+      } catch (walletErr: any) {
+        response.wallet = {
+          address: walletAddress,
+          error: `Failed to check wallet: ${walletErr.message}`,
+        };
+      }
+    }
+
+    res.status(200).json(response);
+  } catch (error: any) {
+    logger.error('[Blockchain] SOL buffer calculation error:', error);
+    res.status(500).json({ error: 'Failed to calculate SOL buffer' });
   }
 }
 

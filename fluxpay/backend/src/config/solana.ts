@@ -157,6 +157,6 @@ export function isMainnet(): boolean {
  */
 export function getSolscanUrl(signature: string): string {
   const base = 'https://solscan.io/tx/';
-  const suffix = SOLANA_NETWORK === 'mainnet' ? '' : '?cluster=devnet';
+  const suffix = isMainnet() ? '' : '?cluster=devnet';
   return `${base}${signature}${suffix}`;
 }
