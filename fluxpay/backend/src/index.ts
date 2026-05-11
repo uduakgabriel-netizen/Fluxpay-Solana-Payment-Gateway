@@ -1,6 +1,6 @@
 import { initCronJobs, shutdownCronJobs } from './queues/jobQueue';
 import { logger } from './utils/logger';
-import dotenv from '@dotenvx/dotenvx';
+import dotenv from 'dotenv';
 dotenv.config();
 
 import app from './app';
