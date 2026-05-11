@@ -12,7 +12,7 @@
   "db:migrate": "prisma migrate dev --name non_custodial",
   "db:push": "prisma db push --accept-data-loss",
   "db:studio": "prisma studio"
-}
+  },
 
   "dependencies": {
     "@dotenvx/dotenvx": "^1.61.1",
