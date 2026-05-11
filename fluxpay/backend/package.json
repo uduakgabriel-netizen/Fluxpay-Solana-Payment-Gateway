@@ -4,15 +4,25 @@
   "description": "FluxPay Solana Payment Gateway - Backend API",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "dotenvx run -f .env.local -f .env -- ts-node src/index.ts",
-    "build": "tsc",
-    "start": "dotenvx run -f .env.local -f .env -- node dist/index.js",
-    "test": "dotenvx run -f .env.local -f .env -- jest --coverage",
-    "db:generate": "dotenvx run -f .env.local -f .env -- prisma generate",
-    "db:migrate": "dotenvx run -f .env.local -f .env -- prisma migrate dev --name non_custodial",
-    "db:push": "dotenvx run -f .env.local -f .env -- prisma db push --accept-data-loss",
-    "db:studio": "dotenvx run -f .env.local -f .env -- prisma studio"
-  },
+  "dev": "ts-node src/index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js",
+  "test": "jest --coverage",
+  "db:generate": "prisma generate",
+  "db:migrate": "prisma migrate dev --name non_custodial",
+  "db:push": "prisma db push --accept-data-loss",
+  "db:studio": "prisma studio"
+}
+  // "scripts": {
+  //   "dev": "dotenvx run -f .env.local -f .env -- ts-node src/index.ts",
+  //   "build": "tsc",
+  //   "start": "dotenvx run -f .env.local -f .env -- node dist/index.js",
+  //   "test": "dotenvx run -f .env.local -f .env -- jest --coverage",
+  //   "db:generate": "dotenvx run -f .env.local -f .env -- prisma generate",
+  //   "db:migrate": "dotenvx run -f .env.local -f .env -- prisma migrate dev --name non_custodial",
+  //   "db:push": "dotenvx run -f .env.local -f .env -- prisma db push --accept-data-loss",
+  //   "db:studio": "dotenvx run -f .env.local -f .env -- prisma studio"
+  // },
   "dependencies": {
     "@dotenvx/dotenvx": "^1.61.1",
     "@prisma/client": "^5.14.0",
