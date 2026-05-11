@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getToken, clearAuth } from '@/utils/token'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://fluxpay-solana-payment-gateway01.onrender.com'
 
 const apiClient = axios.create({
   baseURL: `${API_URL}/api`,
